@@ -1,13 +1,11 @@
 package com.chatait.panictutorgpt.ui.dashboard
 
-import android.app.DatePickerDialog
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.widget.Button
+import android.widget.DatePicker
 import android.widget.EditText
-import android.widget.LinearLayout
 import androidx.appcompat.app.AlertDialog
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.ViewModelProvider
@@ -27,7 +25,7 @@ class DashboardFragment : Fragment() {
         inflater: LayoutInflater,
         container: ViewGroup?,
         savedInstanceState: Bundle?
-    ): View {
+    ): View? {
         val dashboardViewModel =
             ViewModelProvider(this).get(DashboardViewModel::class.java)
 
@@ -36,7 +34,24 @@ class DashboardFragment : Fragment() {
 
         // 予定追加ボタンのクリックリスナー
         binding.dashboardEntryButton.setOnClickListener {
-            showAddScheduleForm()
+            val calendar = Calendar.getInstance()
+            val inflater = LayoutInflater.from(requireContext())
+            val datePickerView = inflater.inflate(R.layout.dialog_custom_date_picker, null)
+            val datePicker = datePickerView.findViewById<DatePicker>(R.id.customDatePicker)
+            datePicker.init(calendar.get(Calendar.YEAR), calendar.get(Calendar.MONTH), calendar.get(Calendar.DAY_OF_MONTH), null)
+
+            val dateDialog = AlertDialog.Builder(requireContext())
+                .setTitle("テストの日付を選択…")
+                .setView(datePickerView)
+                .setPositiveButton("次へ") { _, _ ->
+                    val year = datePicker.year
+                    val month = datePicker.month
+                    val day = datePicker.dayOfMonth
+                    showAddScheduleForm(year, month, day)
+                }
+                .setNegativeButton("キャンセル", null)
+                .create()
+            dateDialog.show()
         }
 
         dashboardViewModel.text.observe(viewLifecycleOwner) {
@@ -45,35 +60,31 @@ class DashboardFragment : Fragment() {
         return root
     }
 
-    // 日付と教科名を同じフォームで入力する関数
-    private fun showAddScheduleForm() {
+    // 日付と教科名を入力する関数（引数で日付を受け取る）
+    private fun showAddScheduleForm(year: Int, month: Int, day: Int) {
         val context = requireContext()
         val inflater = LayoutInflater.from(context)
         val dialogView = inflater.inflate(R.layout.dialog_add_schedule, null)
-        val dateEdit = dialogView.findViewById<EditText>(R.id.editTextDate)
-        val subjectEdit = dialogView.findViewById<EditText>(R.id.editTextSubject)
-
-        val calendar = Calendar.getInstance()
-        var selectedYear = calendar.get(Calendar.YEAR)
-        var selectedMonth = calendar.get(Calendar.MONTH)
-        var selectedDay = calendar.get(Calendar.DAY_OF_MONTH)
-
-        dateEdit.setOnClickListener {
-            val datePicker = DatePickerDialog(context, { _, year, month, dayOfMonth ->
-                selectedYear = year
-                selectedMonth = month
-                selectedDay = dayOfMonth
-                dateEdit.setText("%04d/%02d/%02d".format(year, month + 1, dayOfMonth))
-            }, selectedYear, selectedMonth, selectedDay)
-            datePicker.show()
-        }
+        val subject1 = dialogView.findViewById<EditText>(R.id.editTextSubject1)
+        val subject2 = dialogView.findViewById<EditText>(R.id.editTextSubject2)
+        val subject3 = dialogView.findViewById<EditText>(R.id.editTextSubject3)
+        val subject4 = dialogView.findViewById<EditText>(R.id.editTextSubject4)
+        val subject5 = dialogView.findViewById<EditText>(R.id.editTextSubject5)
+        val subject6 = dialogView.findViewById<EditText>(R.id.editTextSubject6)
 
         val dialog = AlertDialog.Builder(context)
-            .setTitle("テストの予定を追加")
+            .setTitle("科目名を入力…")
             .setView(dialogView)
             .setPositiveButton("追加") { _, _ ->
-                val date = dateEdit.text.toString()
-                val subject = subjectEdit.text.toString()
+                val date = "%04d/%02d/%02d".format(year, month + 1, day)
+                val subjects = listOf(
+                    subject1.text.toString(),
+                    subject2.text.toString(),
+                    subject3.text.toString(),
+                    subject4.text.toString(),
+                    subject5.text.toString(),
+                    subject6.text.toString()
+                )
                 // ここで予定データを保存する処理を追加可能
             }
             .setNegativeButton("キャンセル", null)
