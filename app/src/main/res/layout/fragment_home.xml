@@ -16,6 +16,13 @@
         android:textStyle="bold"
         android:layout_marginBottom="32dp"/>
 
+    <!-- アナログ時計を追加 -->
+    <AnalogClock
+        android:id="@+id/analogClock"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="32dp"/>
+
     <!-- 登録ボタン -->
     <Button
         android:id="@+id/registerButton"
