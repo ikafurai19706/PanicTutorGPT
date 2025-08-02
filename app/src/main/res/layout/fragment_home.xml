@@ -23,12 +23,12 @@
         android:layout_height="wrap_content"
         android:layout_marginBottom="32dp"/>
 
-    <!-- 登録ボタン -->
+    <!-- 通知送信ボタン -->
     <Button
         android:id="@+id/registerButton"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Entry"
+        android:text="📢 リマインダー通知を送信"
         android:textSize="20sp"
         android:padding="16dp"
         android:layout_marginTop="16dp"/>

@@ -8,6 +8,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.Toast
 import androidx.fragment.app.Fragment
+import com.chatait.panictutorgpt.MainActivity
 import com.chatait.panictutorgpt.databinding.FragmentHomeBinding
 import java.text.SimpleDateFormat
 import java.util.*
@@ -37,9 +38,11 @@ class HomeFragment : Fragment() {
         // 1秒ごとに更新
         handler.post(updateTimeRunnable)
 
-        // 登録ボタンのクリック処理
+        // 登録ボタンのクリック処理 - 通知送信機能を追加
         binding.registerButton.setOnClickListener {
-            Toast.makeText(context, "登録されました", Toast.LENGTH_SHORT).show()
+            // MainActivityの通知機能を呼び出し
+            (activity as? MainActivity)?.showNotification()
+            Toast.makeText(context, "リマインダー通知を送信しました！", Toast.LENGTH_SHORT).show()
         }
 
         return root
