@@ -9,12 +9,13 @@ import android.view.ViewGroup
 import android.widget.Toast
 import androidx.fragment.app.Fragment
 import com.chatait.panictutorgpt.MainActivity
-import com.chatait.panictutorgpt.databinding.FragmentHomeBinding
+import com.chatait.panictutorgpt.databinding.FragmentHomeBinding // Bindingクラスはレイアウトファイル名に依存します
 import java.text.SimpleDateFormat
 import java.util.*
 
 class HomeFragment : Fragment() {
 
+    // XMLファイル名が fragment_home.xml なら FragmentHomeBinding になります
     private var _binding: FragmentHomeBinding? = null
     private val binding get() = _binding!!
 
@@ -22,7 +23,7 @@ class HomeFragment : Fragment() {
     private val updateTimeRunnable = object : Runnable {
         override fun run() {
             updateDateTime()
-            handler.postDelayed(this, 1000)
+            handler.postDelayed(this, 10)
         }
     }
 
@@ -35,12 +36,11 @@ class HomeFragment : Fragment() {
 
         // 初回表示
         updateDateTime()
-        // 1秒ごとに更新
+        // 更新処理を開始
         handler.post(updateTimeRunnable)
 
-        // 登録ボタンのクリック処理 - 通知送信機能を追加
+        // 登録ボタンのクリック処理
         binding.registerButton.setOnClickListener {
-            // MainActivityの通知機能を呼び出し
             (activity as? MainActivity)?.showNotification()
             Toast.makeText(context, "リマインダー通知を送信しました！", Toast.LENGTH_SHORT).show()
         }
@@ -49,11 +49,12 @@ class HomeFragment : Fragment() {
     }
 
     private fun updateDateTime() {
+        // デジタル時計の更新 (小数点以下2桁表示)
+        // アナログ時計を動かすためのコードは不要です！
         val currentTime = Calendar.getInstance().time
-        val sdf = SimpleDateFormat("yyyy/MM/dd HH:mm:ss", Locale.getDefault())
+        val sdf = SimpleDateFormat("yyyy/MM/dd HH:mm:ss.SS", Locale.getDefault())
         sdf.timeZone = TimeZone.getTimeZone("Asia/Tokyo")
-        val formattedTime = sdf.format(currentTime)
-        binding.dateTimeText.text = formattedTime
+        binding.dateTimeText.text = sdf.format(currentTime)
     }
 
     override fun onDestroyView() {
