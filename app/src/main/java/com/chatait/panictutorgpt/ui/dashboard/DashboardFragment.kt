@@ -9,6 +9,8 @@ import android.widget.EditText
 import androidx.appcompat.app.AlertDialog
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.ViewModelProvider
+import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
 import com.chatait.panictutorgpt.R
 import com.chatait.panictutorgpt.databinding.FragmentDashboardBinding
 import java.util.Calendar
@@ -21,6 +23,9 @@ class DashboardFragment : Fragment() {
     // onDestroyView.
     private val binding get() = _binding!!
 
+    private val scheduleList = mutableListOf<ScheduleItem>()
+    private lateinit var adapter: ScheduleAdapter
+
     override fun onCreateView(
         inflater: LayoutInflater,
         container: ViewGroup?,
@@ -31,6 +36,12 @@ class DashboardFragment : Fragment() {
 
         _binding = FragmentDashboardBinding.inflate(inflater, container, false)
         val root: View = binding.root
+
+        // RecyclerView初期化
+        val recyclerView = root.findViewById<RecyclerView>(R.id.scheduleList)
+        adapter = ScheduleAdapter(scheduleList)
+        recyclerView.layoutManager = LinearLayoutManager(requireContext())
+        recyclerView.adapter = adapter
 
         // 予定追加ボタンのクリックリスナー
         binding.dashboardEntryButton.setOnClickListener {
@@ -85,7 +96,9 @@ class DashboardFragment : Fragment() {
                     subject5.text.toString(),
                     subject6.text.toString()
                 )
-                // ここで予定データを保存する処理を追加可能
+                scheduleList.add(ScheduleItem(date, subjects))
+                scheduleList.sortBy { it.date }
+                adapter.notifyDataSetChanged()
             }
             .setNegativeButton("キャンセル", null)
             .create()
