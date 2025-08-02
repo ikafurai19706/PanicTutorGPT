@@ -1,35 +1,45 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+    android:gravity="center_horizontal"
     android:orientation="vertical"
-    android:padding="24dp"
-    android:gravity="center_horizontal">
+    android:padding="24dp">
 
-    <!-- 日付時刻を表示するTextView -->
     <TextView
         android:id="@+id/dateTimeText"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="2025/08/02 14:30"
+        android:layout_marginBottom="16dp"
         android:textSize="24sp"
         android:textStyle="bold"
-        android:layout_marginBottom="32dp"/>
+        tools:text="2025/08/03 08:33:51.24" />
 
-    <!-- アナログ時計を追加 -->
+    <TextView
+        android:id="@+id/countdownTestText"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="16dp"
+        android:textColor="@android:color/holo_red_dark"
+        android:textSize="20sp"
+        android:textStyle="bold"
+        android:visibility="gone"
+        tools:text="テストまで残り 08:34:15.72"
+        tools:visibility="visible" />
+
     <AnalogClock
         android:id="@+id/analogClock"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginBottom="32dp"/>
+        android:layout_marginBottom="32dp" />
 
-    <!-- 通知送信ボタン -->
     <Button
         android:id="@+id/registerButton"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="📢 リマインダー通知を送信"
-        android:textSize="20sp"
+        android:layout_marginTop="16dp"
         android:padding="16dp"
-        android:layout_marginTop="16dp"/>
+        android:text="📢 リマインダー通知を送信"
+        android:textSize="20sp" />
 </LinearLayout>
