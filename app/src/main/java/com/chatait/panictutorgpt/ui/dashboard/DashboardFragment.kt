@@ -6,6 +6,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.DatePicker
 import android.widget.EditText
+import android.widget.TextView
 import androidx.appcompat.app.AlertDialog
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.ViewModelProvider
@@ -50,6 +51,8 @@ class DashboardFragment : Fragment() {
             val datePickerView = inflater.inflate(R.layout.dialog_custom_date_picker, null)
             val datePicker = datePickerView.findViewById<DatePicker>(R.id.customDatePicker)
             datePicker.init(calendar.get(Calendar.YEAR), calendar.get(Calendar.MONTH), calendar.get(Calendar.DAY_OF_MONTH), null)
+            // 過去日付を選択不可に
+            datePicker.minDate = calendar.timeInMillis
 
             val dateDialog = AlertDialog.Builder(requireContext())
                 .setTitle("テストの日付を選択…")
@@ -82,26 +85,56 @@ class DashboardFragment : Fragment() {
         val subject4 = dialogView.findViewById<EditText>(R.id.editTextSubject4)
         val subject5 = dialogView.findViewById<EditText>(R.id.editTextSubject5)
         val subject6 = dialogView.findViewById<EditText>(R.id.editTextSubject6)
+        val errorText = dialogView.findViewById<TextView>(R.id.textError)
+
+        val date = "%04d/%02d/%02d".format(year, month + 1, day)
+        // 既存データがあれば初期値セット
+        val existing = scheduleList.find { it.date == date }
+        if (existing != null) {
+            val fields = listOf(subject1, subject2, subject3, subject4, subject5, subject6)
+            existing.subjects.forEachIndexed { i, value ->
+                if (i < fields.size) fields[i].setText(value)
+            }
+        }
 
         val dialog = AlertDialog.Builder(context)
             .setTitle("科目名を入力…")
             .setView(dialogView)
-            .setPositiveButton("追加") { _, _ ->
-                val date = "%04d/%02d/%02d".format(year, month + 1, day)
-                val subjects = listOf(
-                    subject1.text.toString(),
-                    subject2.text.toString(),
-                    subject3.text.toString(),
-                    subject4.text.toString(),
-                    subject5.text.toString(),
-                    subject6.text.toString()
-                )
-                scheduleList.add(ScheduleItem(date, subjects))
-                scheduleList.sortBy { it.date }
-                adapter.notifyDataSetChanged()
-            }
+            .setPositiveButton("追加", null) // 後でリスナーを設定
             .setNegativeButton("キャンセル", null)
             .create()
+        dialog.setOnShowListener {
+            val button = dialog.getButton(AlertDialog.BUTTON_POSITIVE)
+            val subjectFields = listOf(subject1, subject2, subject3, subject4, subject5, subject6)
+            val updateError = {
+                val subjects = subjectFields.map { it.text.toString() }
+                errorText.visibility = if (subjects.all { it.isBlank() }) View.VISIBLE else View.GONE
+            }
+            button.setOnClickListener {
+                val subjects = subjectFields.map { it.text.toString() }
+                if (subjects.all { it.isBlank() }) {
+                    errorText.visibility = View.VISIBLE
+                } else {
+                    errorText.visibility = View.GONE
+                    // 既存データがあれば削除
+                    scheduleList.removeAll { it.date == date }
+                    scheduleList.add(ScheduleItem(date, subjects))
+                    scheduleList.sortBy { it.date }
+                    adapter.notifyDataSetChanged()
+                    dialog.dismiss()
+                }
+            }
+            // 入力時にエラー非表示
+            subjectFields.forEach { editText ->
+                editText.addTextChangedListener(object : android.text.TextWatcher {
+                    override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+                    override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                        updateError()
+                    }
+                    override fun afterTextChanged(s: android.text.Editable?) {}
+                })
+            }
+        }
         dialog.show()
     }
 
