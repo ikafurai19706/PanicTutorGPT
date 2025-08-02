@@ -14,6 +14,7 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.chatait.panictutorgpt.R
 import com.chatait.panictutorgpt.databinding.FragmentDashboardBinding
+import com.chatait.panictutorgpt.data.ScheduleRepository
 import java.util.Calendar
 
 class DashboardFragment : Fragment() {
@@ -24,8 +25,9 @@ class DashboardFragment : Fragment() {
     // onDestroyView.
     private val binding get() = _binding!!
 
-    private val scheduleList = mutableListOf<ScheduleItem>()
+    private lateinit var scheduleList: MutableList<ScheduleItem>
     private lateinit var adapter: ScheduleAdapter
+    private lateinit var scheduleRepository: ScheduleRepository
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -38,9 +40,21 @@ class DashboardFragment : Fragment() {
         _binding = FragmentDashboardBinding.inflate(inflater, container, false)
         val root: View = binding.root
 
+        // ScheduleRepositoryを初期化
+        scheduleRepository = ScheduleRepository(requireContext())
+
+        // 保存されたスケジュールを読み込み
+        scheduleList = scheduleRepository.loadSchedules()
+
         // RecyclerView初期化
         val recyclerView = root.findViewById<RecyclerView>(R.id.scheduleList)
-        adapter = ScheduleAdapter(scheduleList)
+        adapter = ScheduleAdapter(scheduleList) { dateToDelete ->
+            // 削除処理
+            scheduleRepository.deleteSchedule(dateToDelete)
+            scheduleList.clear()
+            scheduleList.addAll(scheduleRepository.loadSchedules())
+            adapter.notifyDataSetChanged()
+        }
         recyclerView.layoutManager = LinearLayoutManager(requireContext())
         recyclerView.adapter = adapter
 
@@ -116,10 +130,13 @@ class DashboardFragment : Fragment() {
                     errorText.visibility = View.VISIBLE
                 } else {
                     errorText.visibility = View.GONE
-                    // 既存データがあれば削除
-                    scheduleList.removeAll { it.date == date }
-                    scheduleList.add(ScheduleItem(date, subjects))
-                    scheduleList.sortBy { it.date }
+                    // ScheduleRepositoryを使用してデータを保存
+                    val scheduleItem = ScheduleItem(date, subjects)
+                    scheduleRepository.addOrUpdateSchedule(scheduleItem)
+
+                    // UIを更新
+                    scheduleList.clear()
+                    scheduleList.addAll(scheduleRepository.loadSchedules())
                     adapter.notifyDataSetChanged()
                     dialog.dismiss()
                 }
