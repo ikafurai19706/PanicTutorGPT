@@ -26,25 +26,119 @@ class ScheduleAdapter(
     private val onItemClick: ((ScheduleItem) -> Unit)? = null,
     private val onEmptyScheduleDelete: ((String) -> Unit)? = null,
     private val studyRepository: StudyRepository? = null
-) : RecyclerView.Adapter<ScheduleAdapter.ViewHolder>() {
+) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
 
-    private val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+    private val displayDateFormat = SimpleDateFormat("yyyy/MM/dd", Locale.getDefault())
     private val longPressHandler = Handler(Looper.getMainLooper())
     private var longPressRunnable: Runnable? = null
 
-    class ViewHolder(view: View) : RecyclerView.ViewHolder(view) {
+    private var displayItems = mutableListOf<DisplayItem>()
+    private var isPastTestsExpanded = false
+
+    companion object {
+        private const val TYPE_SCHEDULE = 0
+        private const val TYPE_PAST_TESTS_HEADER = 1
+    }
+
+    init {
+        updateDisplayItems()
+    }
+
+    private fun updateDisplayItems() {
+        displayItems.clear()
+
+        val (pastTests, currentAndFutureTests) = items.partition { isPastDate(it.date) }
+
+        // 現在・未来のテストを追加
+        currentAndFutureTests.sortedBy { it.date }.forEach { schedule ->
+            displayItems.add(DisplayItem.Schedule(schedule))
+        }
+
+        // 過去のテストがある場合はヘッダーを追加
+        if (pastTests.isNotEmpty()) {
+            displayItems.add(
+                DisplayItem.PastTestsHeader(
+                    pastTests = pastTests.sortedByDescending { it.date },
+                    isExpanded = isPastTestsExpanded
+                )
+            )
+
+            // 展開されている場合は過去のテストも表示
+            if (isPastTestsExpanded) {
+                pastTests.sortedByDescending { it.date }.forEach { schedule ->
+                    displayItems.add(DisplayItem.Schedule(schedule))
+                }
+            }
+        }
+    }
+
+    private fun isPastDate(dateString: String): Boolean {
+        return try {
+            val testDate = displayDateFormat.parse(dateString)
+            val today = Calendar.getInstance().apply {
+                set(Calendar.HOUR_OF_DAY, 0)
+                set(Calendar.MINUTE, 0)
+                set(Calendar.SECOND, 0)
+                set(Calendar.MILLISECOND, 0)
+            }.time
+            testDate != null && testDate.before(today)
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    class ScheduleViewHolder(view: View) : RecyclerView.ViewHolder(view) {
         val dateText: TextView = view.findViewById(R.id.scheduleDate)
         val subjectsText: TextView = view.findViewById(R.id.scheduleSubjects)
         val cardView: View = view
     }
 
-    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
-        val view = LayoutInflater.from(parent.context).inflate(R.layout.item_schedule, parent, false)
-        return ViewHolder(view)
+    class PastTestsHeaderViewHolder(view: View) : RecyclerView.ViewHolder(view) {
+        val headerTitle: TextView = view.findViewById(R.id.headerTitle)
+        val pastTestCount: TextView = view.findViewById(R.id.pastTestCount)
+        val expandIcon: android.widget.ImageView = view.findViewById(R.id.expandIcon)
+        val cardView: View = view
     }
 
-    override fun onBindViewHolder(holder: ViewHolder, position: Int) {
-        val item = items[position]
+    override fun getItemViewType(position: Int): Int {
+        return when (displayItems[position]) {
+            is DisplayItem.Schedule -> TYPE_SCHEDULE
+            is DisplayItem.PastTestsHeader -> TYPE_PAST_TESTS_HEADER
+        }
+    }
+
+    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder {
+        return when (viewType) {
+            TYPE_SCHEDULE -> {
+                val view = LayoutInflater.from(parent.context).inflate(R.layout.item_schedule, parent, false)
+                ScheduleViewHolder(view)
+            }
+            TYPE_PAST_TESTS_HEADER -> {
+                val view = LayoutInflater.from(parent.context).inflate(R.layout.item_past_tests_header, parent, false)
+                PastTestsHeaderViewHolder(view)
+            }
+            else -> throw IllegalArgumentException("Unknown view type: $viewType")
+        }
+    }
+
+    override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
+        val item = displayItems[position]
+
+        when (holder) {
+            is ScheduleViewHolder -> {
+                if (item is DisplayItem.Schedule) {
+                    bindScheduleItem(holder, item.schedule)
+                }
+            }
+            is PastTestsHeaderViewHolder -> {
+                if (item is DisplayItem.PastTestsHeader) {
+                    bindPastTestsHeader(holder, item)
+                }
+            }
+        }
+    }
+
+    private fun bindScheduleItem(holder: ScheduleViewHolder, item: ScheduleItem) {
         holder.dateText.text = item.date
 
         // 空でない科目のみ表示（チェックマーク付き＋色付き）
@@ -90,34 +184,73 @@ class ScheduleAdapter(
             holder.subjectsText.text = spannableBuilder
         }
 
-        // タッチリスナー設定（長押し処理と通常クリック処理を統合）
-        holder.cardView.setOnTouchListener { view, event ->
-            when (event.action) {
-                MotionEvent.ACTION_DOWN -> {
-                    startLongPressAnimation(view)
-                    startLongPressTimer(view, item)
-                    true
-                }
-                MotionEvent.ACTION_UP -> {
-                    val wasLongPressCompleted = longPressRunnable == null
-                    cancelLongPress(view)
-                    if (!wasLongPressCompleted) {
-                        // 長押しが完了していない場合のみ通常クリック
-                        onItemClick?.invoke(item)
+        // タッチリスナー設定（過去のテストは編集不可）
+        if (isPastDate(item.date)) {
+            // 過去のテストはタッチ操作を無効化
+            holder.cardView.setOnTouchListener(null)
+            holder.cardView.isClickable = false
+            holder.cardView.isLongClickable = false
+
+            // 過去のテストであることを視覚的に示す（少し暗くする）
+            holder.cardView.alpha = 0.7f
+        } else {
+            // 現在または未来のテストは通常通りタッチ操作を有効化
+            holder.cardView.alpha = 1.0f
+            holder.cardView.isClickable = true
+            holder.cardView.isLongClickable = true
+
+            holder.cardView.setOnTouchListener { view, event ->
+                when (event.action) {
+                    MotionEvent.ACTION_DOWN -> {
+                        startLongPressAnimation(view)
+                        startLongPressTimer(view, item)
+                        true
                     }
-                    // 長押しが完了した場合は何もしない（削除ダイアログは既に表示済み）
-                    true
+                    MotionEvent.ACTION_UP -> {
+                        val wasLongPressCompleted = longPressRunnable == null
+                        cancelLongPress(view)
+                        if (!wasLongPressCompleted) {
+                            // 長押しが完了していない場合のみ通常クリック
+                            onItemClick?.invoke(item)
+                        }
+                        // 長押しが完了した場合は何もしない（削除ダイアログは既に表示済み）
+                        true
+                    }
+                    MotionEvent.ACTION_CANCEL -> {
+                        cancelLongPress(view)
+                        true
+                    }
+                    else -> false
                 }
-                MotionEvent.ACTION_CANCEL -> {
-                    cancelLongPress(view)
-                    true
-                }
-                else -> false
             }
         }
     }
 
-    override fun getItemCount(): Int = items.size
+    private fun bindPastTestsHeader(holder: PastTestsHeaderViewHolder, item: DisplayItem.PastTestsHeader) {
+        holder.headerTitle.text = "過去のテスト"
+        holder.pastTestCount.text = "${item.pastTests.size} 件の過去テスト"
+
+        // ヘッダーのタッチリスナー設定
+        holder.cardView.setOnClickListener {
+            isPastTestsExpanded = !isPastTestsExpanded
+            updateDisplayItems()
+            notifyDataSetChanged()
+        }
+
+        // 展開状態に応じて背景色を変更
+        val backgroundColor = if (isPastTestsExpanded) {
+            ContextCompat.getColor(holder.itemView.context, R.color.colorAccentLight)
+        } else {
+            Color.TRANSPARENT
+        }
+        holder.cardView.setBackgroundColor(backgroundColor)
+
+        // 矢印アイコンの回転
+        val rotationDegree = if (isPastTestsExpanded) 180f else 0f
+        holder.expandIcon.rotation = rotationDegree
+    }
+
+    override fun getItemCount(): Int = displayItems.size
 
     private fun startLongPressAnimation(view: View) {
         // CardViewの元の背景を保存
@@ -188,7 +321,7 @@ class ScheduleAdapter(
 
     private fun isWithinOneWeek(dateString: String): Boolean {
         return try {
-            val testDate = dateFormat.parse(dateString)
+            val testDate = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).parse(dateString)
             val currentDate = Date()
             val oneWeekFromNow = Calendar.getInstance().apply {
                 time = currentDate
@@ -224,6 +357,7 @@ class ScheduleAdapter(
         val position = items.indexOfFirst { it.id == itemId }
         if (position != -1) {
             items.removeAt(position)
+            updateDisplayItems()
             notifyItemRemoved(position)
         }
     }
@@ -232,7 +366,13 @@ class ScheduleAdapter(
         val position = items.indexOfFirst { it.id == updatedItem.id }
         if (position != -1) {
             items[position] = updatedItem
+            updateDisplayItems()
             notifyItemChanged(position)
         }
+    }
+
+    sealed class DisplayItem {
+        data class Schedule(val schedule: ScheduleItem) : DisplayItem()
+        data class PastTestsHeader(val pastTests: List<ScheduleItem>, val isExpanded: Boolean) : DisplayItem()
     }
 }

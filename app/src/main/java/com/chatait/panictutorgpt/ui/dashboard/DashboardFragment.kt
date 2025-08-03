@@ -180,7 +180,7 @@ class DashboardFragment : Fragment() {
                                     // UIを更新
                                     scheduleList.clear()
                                     scheduleList.addAll(scheduleRepository.loadSchedules())
-                                    adapter.notifyDataSetChanged()
+                                    adapter.refreshData(scheduleList)
                                     dialog.dismiss()
                                 }
                                 .setNegativeButton("キャンセル", null)
@@ -199,7 +199,7 @@ class DashboardFragment : Fragment() {
                     // UIを更新
                     scheduleList.clear()
                     scheduleList.addAll(scheduleRepository.loadSchedules())
-                    adapter.notifyDataSetChanged()
+                    adapter.refreshData(scheduleList)
                     dialog.dismiss()
                 }
             }

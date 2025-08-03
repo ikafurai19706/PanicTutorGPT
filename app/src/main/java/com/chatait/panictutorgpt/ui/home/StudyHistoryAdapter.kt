@@ -13,7 +13,7 @@ import java.util.*
 class StudyHistoryAdapter(private val studyRecords: List<StudyRecord>) :
     RecyclerView.Adapter<StudyHistoryAdapter.ViewHolder>() {
 
-    private val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
+    private val dateTimeFormat = SimpleDateFormat("yyyy/MM/dd HH:mm:ss", Locale.getDefault())
 
     class ViewHolder(view: View) : RecyclerView.ViewHolder(view) {
         val textStudyDate: TextView = view.findViewById(R.id.textStudyDate)
@@ -32,7 +32,7 @@ class StudyHistoryAdapter(private val studyRecords: List<StudyRecord>) :
 
         holder.textStudyDate.text = "📅 ${record.date}"
         holder.textSubjectInfo.text = "${record.period}限: ${record.subject}"
-        holder.textStudyTime.text = "勉強完了: ${timeFormat.format(Date(record.timestamp))}"
+        holder.textStudyTime.text = "勉強完了: ${dateTimeFormat.format(Date(record.timestamp))}"
     }
 
     override fun getItemCount(): Int = studyRecords.size

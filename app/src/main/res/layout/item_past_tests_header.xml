@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.cardview.widget.CardView
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:card_view="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    card_view:cardElevation="2dp"
+    card_view:cardCornerRadius="8dp"
+    card_view:cardUseCompatPadding="true"
+    android:layout_margin="8dp"
+    card_view:cardBackgroundColor="#F0F0F0">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:padding="16dp"
+        android:gravity="center_vertical">
+
+        <ImageView
+            android:id="@+id/expandIcon"
+            android:layout_width="24dp"
+            android:layout_height="24dp"
+            android:src="@android:drawable/arrow_down_float"
+            android:layout_marginEnd="12dp" />
+
+        <TextView
+            android:id="@+id/headerTitle"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="過去のテスト"
+            android:textSize="16sp"
+            android:textStyle="bold"
+            android:textColor="#666666" />
+
+        <TextView
+            android:id="@+id/pastTestCount"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="0件"
+            android:textSize="14sp"
+            android:textColor="#999999" />
+
+    </LinearLayout>
+</androidx.cardview.widget.CardView>
