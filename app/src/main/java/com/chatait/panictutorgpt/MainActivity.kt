@@ -4,6 +4,10 @@ import android.app.*
 import android.content.*
 import android.content.pm.PackageManager
 import android.os.*
+import android.util.Log
+import android.view.LayoutInflater
+import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.*
 import androidx.core.content.ContextCompat
@@ -12,17 +16,25 @@ import androidx.navigation.ui.*
 import com.chatait.panictutorgpt.databinding.ActivityMainBinding
 import com.google.android.material.bottomnavigation.BottomNavigationView
 import java.util.Random
+import com.chatait.panictutorgpt.data.GeminiService
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 class MainActivity : AppCompatActivity() {
 
     private val CHANNEL_ID = "default_channel"
     private lateinit var binding: ActivityMainBinding
+    private lateinit var geminiService: GeminiService
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
+
+        // GeminiServiceを初期化
+        geminiService = GeminiService(this)
 
         val navView: BottomNavigationView = binding.navView
         val navController = findNavController(R.id.nav_host_fragment_activity_main)
@@ -34,6 +46,9 @@ class MainActivity : AppCompatActivity() {
 
         createNotificationChannel()
         requestNotificationPermission()
+
+        // アプリ起動時にAPIキーが設定されていない場合はダイアログを表示
+        checkAndShowApiKeyDialog()
     }
 
     private fun createNotificationChannel() {
@@ -70,51 +85,67 @@ class MainActivity : AppCompatActivity() {
             if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.POST_NOTIFICATIONS)
                 != PackageManager.PERMISSION_GRANTED
             ) {
+                Log.e("MainActivity", "通知パーミッションが付与されていません")
+                Toast.makeText(this, "通知パーミッションが必要です", Toast.LENGTH_SHORT).show()
                 return
             }
         }
 
         val title = "⚠️ テスト予定リマインダー"
-        val text = getRandomScaryMessage()
+        Log.d("MainActivity", "リマインダー通知の生成を開始します")
 
-        val intent = Intent(this, MainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+        // OpenAI APIを使って動的にメッセージを生成
+        CoroutineScope(Dispatchers.Main).launch {
+            try {
+                val text = getRandomScaryMessage()
+                Log.d("MainActivity", "メッセージ生成完了: $text")
+
+                val intent = Intent(this@MainActivity, MainActivity::class.java).apply {
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+                }
+                val pendingIntentRequestCode = System.currentTimeMillis().toInt()
+                val pendingIntent: PendingIntent = PendingIntent.getActivity(
+                    this@MainActivity,
+                    pendingIntentRequestCode,
+                    intent,
+                    PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+                )
+
+                val builder = NotificationCompat.Builder(this@MainActivity, CHANNEL_ID)
+                    .setSmallIcon(R.drawable.ic_launcher_foreground)
+                    .setContentTitle(title)
+                    .setContentText(text)
+                    .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+                    .setContentIntent(pendingIntent)
+                    .setAutoCancel(true)
+
+                try {
+                    with(NotificationManagerCompat.from(this@MainActivity)) {
+                        val notificationId = System.currentTimeMillis().toInt()
+                        notify(notificationId, builder.build())
+                        Log.d("MainActivity", "通知を正常に送信しました (ID: $notificationId)")
+                    }
+
+                    saveNotificationToHistory(title, text)
+                    Log.d("MainActivity", "通知履歴を保存しました")
+
+                } catch (e: SecurityException) {
+                    Log.e("MainActivity", "通知送信に失敗しました - セキュリティエラー: ${e.message}")
+                    Toast.makeText(this@MainActivity, "通知送信に失敗しました", Toast.LENGTH_SHORT).show()
+                } catch (e: Exception) {
+                    Log.e("MainActivity", "通知送信中に予期しないエラーが発生しました: ${e.message}", e)
+                    Toast.makeText(this@MainActivity, "通知送信エラーが発生しました", Toast.LENGTH_SHORT).show()
+                }
+
+            } catch (e: Exception) {
+                Log.e("MainActivity", "リマインダー生成中にエラーが発生しました: ${e.message}", e)
+                Toast.makeText(this@MainActivity, "リマインダー生成に失敗しました", Toast.LENGTH_SHORT).show()
+            }
         }
-        val pendingIntentRequestCode = System.currentTimeMillis().toInt()
-        val pendingIntent: PendingIntent = PendingIntent.getActivity(
-            this,
-            pendingIntentRequestCode,
-            intent,
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
-        )
-
-        val builder = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_launcher_foreground)
-            .setContentTitle(title)
-            .setContentText(text)
-            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
-            .setContentIntent(pendingIntent)
-            .setAutoCancel(true)
-
-        with(NotificationManagerCompat.from(this)) {
-            val notificationId = System.currentTimeMillis().toInt()
-            notify(notificationId, builder.build())
-        }
-
-        saveNotificationToHistory(title, text)
     }
 
-    private fun getRandomScaryMessage(): String {
-        val messages = listOf(
-            "締め切りが迫っています！今すぐ勉強を始めましょう！",
-            "見て見ぬふりはできません...テスト準備は大丈夫ですか？",
-            "あなたの勉強状況が気になります。頑張って！",
-            "時間は刻一刻と過ぎています。準備はお済みですか？",
-            "本当にそれでいいのですか？今から始めれば間に合います！",
-            "テスト当日まであとわずか...準備を忘れずに！",
-            "勉強しないと...後悔することになりますよ？"
-        )
-        return messages[Random().nextInt(messages.size)]
+    private suspend fun getRandomScaryMessage(): String {
+        return geminiService.generateScaryMessage()
     }
 
     private fun saveNotificationToHistory(title: String, message: String) {
@@ -126,6 +157,51 @@ class MainActivity : AppCompatActivity() {
         prefs.edit()
             .putStringSet("history", history)
             .apply()
+    }
+
+    private fun checkAndShowApiKeyDialog() {
+        if (!geminiService.isApiKeySet()) {
+            showApiKeySettingDialog()
+        }
+    }
+
+    private fun showApiKeySettingDialog() {
+        val dialogView = LayoutInflater.from(this).inflate(R.layout.dialog_api_key_setting, null)
+        val editTextApiKey = dialogView.findViewById<android.widget.EditText>(R.id.editTextApiKey)
+        val buttonSave = dialogView.findViewById<android.widget.Button>(R.id.buttonSaveApiKey)
+        val textViewStatus = dialogView.findViewById<android.widget.TextView>(R.id.textViewStatus)
+
+        // 現在の設定状態を表示
+        if (geminiService.isApiKeySet()) {
+            textViewStatus.text = "APIキーが設定されています"
+            textViewStatus.setTextColor(resources.getColor(android.R.color.holo_green_dark, null))
+        } else {
+            textViewStatus.text = "APIキーが設定されていません"
+            textViewStatus.setTextColor(resources.getColor(android.R.color.holo_red_dark, null))
+        }
+
+        val dialog = AlertDialog.Builder(this)
+            .setTitle("Google Gemini API設定")
+            .setMessage("AIが生成する個性的な通知メッセージを受け取るには、Google Gemini APIキーの設定が必要です。")
+            .setView(dialogView)
+            .setNegativeButton("後で設定") { _, _ ->
+                Toast.makeText(this, "ホーム画面の通知ボタンを長押しで後から設定できます", Toast.LENGTH_LONG).show()
+            }
+            .setCancelable(false)
+            .create()
+
+        buttonSave.setOnClickListener {
+            val apiKey = editTextApiKey.text.toString().trim()
+            if (apiKey.isNotEmpty()) {
+                geminiService.saveApiKey(apiKey)
+                Toast.makeText(this, "APIキーが保存されました", Toast.LENGTH_SHORT).show()
+                dialog.dismiss()
+            } else {
+                Toast.makeText(this, "APIキーを入力してください", Toast.LENGTH_SHORT).show()
+            }
+        }
+
+        dialog.show()
     }
 
     override fun onRequestPermissionsResult(

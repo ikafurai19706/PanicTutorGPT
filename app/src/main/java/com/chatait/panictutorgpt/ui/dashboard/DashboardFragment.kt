@@ -127,7 +127,46 @@ class DashboardFragment : Fragment() {
             button.setOnClickListener {
                 val subjects = subjectFields.map { it.text.toString() }
                 if (subjects.all { it.isBlank() }) {
-                    errorText.visibility = View.VISIBLE
+                    // 既存データがある場合は削除確認ダイアログを表示
+                    if (existing != null) {
+                        // 一週間前チェック
+                        val testDate = Calendar.getInstance()
+                        val dateParts = date.split("/")
+                        testDate.set(dateParts[0].toInt(), dateParts[1].toInt() - 1, dateParts[2].toInt())
+
+                        val today = Calendar.getInstance()
+                        val oneWeekFromNow = Calendar.getInstance()
+                        oneWeekFromNow.add(Calendar.DAY_OF_YEAR, 7)
+
+                        if (testDate.before(oneWeekFromNow)) {
+                            // 一週間前を切っている場合は削除不可
+                            val warningDialog = AlertDialog.Builder(context)
+                                .setTitle("削除できません")
+                                .setMessage("テスト一週間前を切った予定は削除できません。")
+                                .setPositiveButton("OK", null)
+                                .create()
+                            warningDialog.show()
+                        } else {
+                            // 一週間前を切っていない場合は削除確認
+                            val deleteDialog = AlertDialog.Builder(context)
+                                .setTitle("確認")
+                                .setMessage("この日のテスト予定を削除します。よろしいですか？")
+                                .setPositiveButton("削除") { _, _ ->
+                                    // 既存のスケジュールを削除
+                                    scheduleRepository.deleteSchedule(date)
+                                    // UIを更新
+                                    scheduleList.clear()
+                                    scheduleList.addAll(scheduleRepository.loadSchedules())
+                                    adapter.notifyDataSetChanged()
+                                    dialog.dismiss()
+                                }
+                                .setNegativeButton("キャンセル", null)
+                                .create()
+                            deleteDialog.show()
+                        }
+                    } else {
+                        errorText.visibility = View.VISIBLE
+                    }
                 } else {
                     errorText.visibility = View.GONE
                     // ScheduleRepositoryを使用してデータを保存

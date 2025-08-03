@@ -7,10 +7,12 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
 import androidx.core.view.isVisible
 import androidx.fragment.app.Fragment
 import com.chatait.panictutorgpt.MainActivity
-import com.chatait.panictutorgpt.ui.dashboard.ScheduleItem
+import com.chatait.panictutorgpt.R
+import com.chatait.panictutorgpt.data.GeminiService
 import com.chatait.panictutorgpt.data.ScheduleRepository
 import com.chatait.panictutorgpt.databinding.FragmentHomeBinding
 import java.text.SimpleDateFormat
@@ -62,6 +64,13 @@ class HomeFragment : Fragment() {
             (activity as? MainActivity)?.showNotification()
             Toast.makeText(context, "リマインダー通知を送信しました！", Toast.LENGTH_SHORT).show()
         }
+
+        // 長押しでAPIキー設定ダイアログを表示
+        binding.registerButton.setOnLongClickListener {
+            showApiKeySettingDialog()
+            true
+        }
+
         return root
     }
 
@@ -146,6 +155,43 @@ class HomeFragment : Fragment() {
         val sdf = SimpleDateFormat("yyyy/MM/dd HH:mm:ss.SS", Locale.getDefault())
         sdf.timeZone = TimeZone.getTimeZone("Asia/Tokyo")
         binding.dateTimeText.text = sdf.format(currentTime)
+    }
+
+    private fun showApiKeySettingDialog() {
+        val dialogView = LayoutInflater.from(requireContext()).inflate(R.layout.dialog_api_key_setting, null)
+        val editTextApiKey = dialogView.findViewById<android.widget.EditText>(R.id.editTextApiKey)
+        val buttonSave = dialogView.findViewById<android.widget.Button>(R.id.buttonSaveApiKey)
+        val textViewStatus = dialogView.findViewById<android.widget.TextView>(R.id.textViewStatus)
+
+        val geminiService = GeminiService(requireContext())
+
+        // 現在の設定状態を表示
+        if (geminiService.isApiKeySet()) {
+            textViewStatus.text = "APIキーが設定されています"
+            textViewStatus.setTextColor(resources.getColor(android.R.color.holo_green_dark, null))
+        } else {
+            textViewStatus.text = "APIキーが設定されていません"
+            textViewStatus.setTextColor(resources.getColor(android.R.color.holo_red_dark, null))
+        }
+
+        val dialog = AlertDialog.Builder(requireContext())
+            .setTitle("Google Gemini API設定")
+            .setView(dialogView)
+            .setNegativeButton("キャンセル", null)
+            .create()
+
+        buttonSave.setOnClickListener {
+            val apiKey = editTextApiKey.text.toString().trim()
+            if (apiKey.isNotEmpty()) {
+                geminiService.saveApiKey(apiKey)
+                Toast.makeText(requireContext(), "APIキーが保存されました", Toast.LENGTH_SHORT).show()
+                dialog.dismiss()
+            } else {
+                Toast.makeText(requireContext(), "APIキーを入力してください", Toast.LENGTH_SHORT).show()
+            }
+        }
+
+        dialog.show()
     }
 
     override fun onDestroyView() {

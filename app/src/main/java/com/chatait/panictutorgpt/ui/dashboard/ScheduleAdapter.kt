@@ -5,6 +5,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.TextView
 import androidx.appcompat.app.AlertDialog
+import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.RecyclerView
 import com.chatait.panictutorgpt.R
 
@@ -30,16 +31,41 @@ class ScheduleAdapter(
             .filter { it.value.isNotBlank() }
             .joinToString("\n") { (i, s) -> "${i+1}限: $s" }
 
-        // 長押しで削除確認ダイアログを表示
-        holder.itemView.setOnLongClickListener {
-            AlertDialog.Builder(holder.itemView.context)
-                .setTitle("予定を削除")
-                .setMessage("${item.date}の予定を削除しますか？")
-                .setPositiveButton("削除") { _, _ ->
-                    onDeleteClick?.invoke(item.date)
+        // 5秒長押しで削除確認ダイアログを表示（削除不可期間でも強制削除可能）
+        var longPressHandler: Runnable? = null
+
+        // 元の背景色を保存
+        val originalBackground = holder.itemView.background
+
+        holder.itemView.setOnTouchListener { view, event ->
+            when (event.action) {
+                android.view.MotionEvent.ACTION_DOWN -> {
+                    // 長押し開始時に背景色を変更
+                    view.setBackgroundColor(ContextCompat.getColor(view.context, android.R.color.holo_red_light))
+
+                    longPressHandler = Runnable {
+                        // 5秒長押しの場合は削除不可期間でも強制削除確認
+                        // 元の背景色に戻す
+                        view.background = originalBackground
+
+                        AlertDialog.Builder(holder.itemView.context)
+                            .setTitle("予定を削除")
+                            .setMessage("本当に削除しますか？この操作は取り消せません。")
+                            .setPositiveButton("削除") { _, _ ->
+                                onDeleteClick?.invoke(item.date)
+                            }
+                            .setNegativeButton("キャンセル", null)
+                            .show()
+                    }
+                    view.postDelayed(longPressHandler, 5000) // 5秒後に実行
                 }
-                .setNegativeButton("キャンセル", null)
-                .show()
+                android.view.MotionEvent.ACTION_UP,
+                android.view.MotionEvent.ACTION_CANCEL -> {
+                    // 指を離したときに元の背景色に戻す
+                    view.background = originalBackground
+                    longPressHandler?.let { view.removeCallbacks(it) }
+                }
+            }
             true
         }
     }
