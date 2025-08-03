@@ -75,13 +75,19 @@ class ThreatNotificationService : Service() {
     }
 
     private suspend fun checkAndSendThreatMessage() {
+        val studyRepository = com.chatait.panictutorgpt.data.StudyRepository(this)
+        val schedules = scheduleRepository.loadSchedules()
+
+        // 1週間以内のすべての科目が完了していたら通知をオフ
+        if (studyRepository.areAllSubjectsWithinOneWeekCompleted(schedules)) {
+            Log.d("ThreatService", "1週間以内のすべての科目が完了済みのため通知をスキップ")
+            return
+        }
+
         val upcomingTests = getTestsWithinOneWeek()
 
         if (upcomingTests.isNotEmpty()) {
             // 勉強記録をチェックして、すべて勉強済みの日は除外
-            val studyRepository = com.chatait.panictutorgpt.data.StudyRepository(this)
-            val scheduleRepository = com.chatait.panictutorgpt.data.ScheduleRepository(this)
-
             val testsNeedingStudy = upcomingTests.filter { (date, subjects) ->
                 // その日のスケジュールアイテムを取得
                 val scheduleItem = scheduleRepository.loadSchedules().find { it.date == date }

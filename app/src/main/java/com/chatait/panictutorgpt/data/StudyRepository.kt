@@ -8,9 +8,10 @@ import java.text.SimpleDateFormat
 import java.util.*
 
 data class StudyRecord(
-    val date: String,
-    val subject: String,
-    val period: Int,
+    val date: String,           // テスト日付
+    val subject: String,        // 科目名
+    val period: Int,           // 時限
+    val studyDate: String,     // 勉強した日付 (新規追加)
     val timestamp: Long = System.currentTimeMillis()
 )
 
@@ -23,16 +24,19 @@ class StudyRepository(private val context: Context) {
     fun saveStudyRecord(studyRecord: StudyRecord) {
         val existingRecords = getStudyRecords().toMutableList()
 
-        // 同じ日付・科目・時限の記録があれば更新、なければ追加
+        // 同じテスト日付・科目・時限・勉強日付の記録があれば更新、なければ追加
         val existingIndex = existingRecords.indexOfFirst {
             it.date == studyRecord.date &&
             it.subject == studyRecord.subject &&
-            it.period == studyRecord.period
+            it.period == studyRecord.period &&
+            it.studyDate == studyRecord.studyDate  // 勉強日付も比較に追加
         }
 
         if (existingIndex != -1) {
+            // 同じ日に同じ科目を勉強した記録があれば更新
             existingRecords[existingIndex] = studyRecord
         } else {
+            // 新しい日の勉強記録として追加
             existingRecords.add(studyRecord)
         }
 
@@ -58,12 +62,9 @@ class StudyRepository(private val context: Context) {
         val today = dateFormat.format(Date())
         val allStudyRecords = getStudyRecords()
 
-        // 今日作成された勉強記録から、指定されたテスト日付・科目・時限に一致するものを探す
+        // 今日勉強した記録から、指定されたテスト日付・科目・時限に一致するものを探す
         return allStudyRecords.any { record ->
-            val recordDate = Date(record.timestamp)
-            val recordDateString = dateFormat.format(recordDate)
-
-            recordDateString == today &&  // 今日記録された
+            record.studyDate == today &&  // 今日勉強した
             record.date == date &&        // テスト日付が一致
             record.subject == subject &&  // 科目が一致
             record.period == period       // 時限が一致
@@ -84,10 +85,7 @@ class StudyRepository(private val context: Context) {
         // すべての科目が今日勉強されているかチェック
         return allSubjects.all { (date, subject, period) ->
             allStudyRecords.any { record ->
-                val recordDate = Date(record.timestamp)
-                val recordDateString = dateFormat.format(recordDate)
-
-                recordDateString == today &&  // 今日記録された
+                record.studyDate == today &&  // 今日勉強した
                 record.date == date &&        // テスト日付が一致
                 record.subject == subject &&  // 科目が一致
                 record.period == period       // 時限が一致
@@ -107,5 +105,55 @@ class StudyRepository(private val context: Context) {
     fun clearAllStudyRecords() {
         // すべての勉強記録を削除
         prefs.edit().remove("study_records").apply()
+    }
+
+    fun getStudyRecordsForStudyDate(studyDate: String): List<StudyRecord> {
+        // 指定した勉強日の記録を取得
+        return getStudyRecords().filter { it.studyDate == studyDate }
+    }
+
+    fun getStudyHistoryByDate(): Map<String, List<StudyRecord>> {
+        // 勉強日別にグループ化した履歴を取得
+        return getStudyRecords()
+            .groupBy { it.studyDate }
+            .toSortedMap(compareByDescending { it })
+    }
+
+    fun areAllSubjectsWithinOneWeekCompleted(schedules: List<com.chatait.panictutorgpt.ui.dashboard.ScheduleItem>): Boolean {
+        val today = dateFormat.format(Date())
+        val currentTime = System.currentTimeMillis()
+        val oneWeekFromNow = currentTime + (7 * 24 * 60 * 60 * 1000)
+
+        // 1週間以内のテスト科目を取得
+        val subjectsWithinOneWeek = schedules.flatMap { scheduleItem ->
+            try {
+                val testDate = dateFormat.parse(scheduleItem.date)?.time
+                if (testDate != null && testDate in currentTime..oneWeekFromNow) {
+                    scheduleItem.subjects.withIndex()
+                        .filter { it.value.isNotBlank() }
+                        .map { (index, subject) ->
+                            Triple(scheduleItem.date, subject, index + 1)
+                        }
+                } else {
+                    emptyList()
+                }
+            } catch (e: Exception) {
+                emptyList()
+            }
+        }
+
+        if (subjectsWithinOneWeek.isEmpty()) return false
+
+        val allStudyRecords = getStudyRecords()
+
+        // 1週間以内のすべての科目が今日勉強されているかチェック
+        return subjectsWithinOneWeek.all { (date, subject, period) ->
+            allStudyRecords.any { record ->
+                record.studyDate == today &&  // 今日勉強した
+                record.date == date &&        // テスト日付が一致
+                record.subject == subject &&  // 科目が一致
+                record.period == period       // 時限が一致
+            }
+        }
     }
 }

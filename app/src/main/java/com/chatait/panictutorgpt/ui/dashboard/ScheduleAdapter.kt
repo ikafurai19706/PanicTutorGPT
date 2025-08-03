@@ -61,7 +61,7 @@ class ScheduleAdapter(
                 val isStudied = studyRepository?.isSubjectStudiedToday(item.date, subject, period) == true
 
                 val text = if (isStudied) {
-                    "✓ ${period}限: $subject"
+                    "${period}限: $subject ✓"
                 } else {
                     "${period}限: $subject"
                 }

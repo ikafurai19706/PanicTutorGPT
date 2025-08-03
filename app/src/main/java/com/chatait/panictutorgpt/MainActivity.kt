@@ -197,6 +197,15 @@ class MainActivity : AppCompatActivity() {
 
     private fun checkAndSendThreatMessage() {
         val scheduleRepository = com.chatait.panictutorgpt.data.ScheduleRepository(this)
+        val studyRepository = com.chatait.panictutorgpt.data.StudyRepository(this)
+        val schedules = scheduleRepository.loadSchedules()
+
+        // 1週間以内のすべての科目が完了していたら通知をオフ
+        if (studyRepository.areAllSubjectsWithinOneWeekCompleted(schedules)) {
+            Log.d("MainActivity", "1週間以内のすべての科目が完了済みのため通知をスキップ")
+            return
+        }
+
         val upcomingTests = getTestsWithinOneWeek(scheduleRepository)
 
         if (upcomingTests.isNotEmpty()) {

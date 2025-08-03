@@ -274,11 +274,14 @@ class HomeFragment : Fragment() {
             if (checkedItems.isNotEmpty()) {
                 // 勉強記録を保存
                 val studyRepository = com.chatait.panictutorgpt.data.StudyRepository(requireContext())
+                val today = java.text.SimpleDateFormat("yyyy/MM/dd", java.util.Locale.getDefault()).format(java.util.Date())
+
                 checkedItems.forEach { item ->
                     val studyRecord = com.chatait.panictutorgpt.data.StudyRecord(
                         date = item.date,
                         subject = item.subject,
-                        period = item.period
+                        period = item.period,
+                        studyDate = today  // 勉強した日付を追加
                     )
                     studyRepository.saveStudyRecord(studyRecord)
                 }
