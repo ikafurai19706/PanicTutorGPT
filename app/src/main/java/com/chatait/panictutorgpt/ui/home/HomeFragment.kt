@@ -212,10 +212,34 @@ class HomeFragment : Fragment() {
             return
         }
 
+        // 現在の日付を取得
+        val currentDate = Calendar.getInstance().apply {
+            set(Calendar.HOUR_OF_DAY, 0)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }.time
+        val dateFormat = SimpleDateFormat("yyyy/MM/dd", Locale.getDefault())
+
+        // 過去のテストを除外し、現在・未来のテストのみを対象とする
+        val futureSchedules = schedules.filter { scheduleItem ->
+            try {
+                val testDate = dateFormat.parse(scheduleItem.date)
+                testDate != null && (testDate.after(currentDate) || testDate == currentDate)
+            } catch (e: Exception) {
+                false // 日付解析エラーの場合は除外
+            }
+        }
+
+        if (futureSchedules.isEmpty()) {
+            Toast.makeText(requireContext(), "勉強できる未来のテスト予定がありません", Toast.LENGTH_SHORT).show()
+            return
+        }
+
         // 日付ごとにグループ化してチェックリスト項目を作成
         val checklistItems = mutableListOf<ChecklistItem>()
 
-        schedules.sortedBy { it.date }.forEach { scheduleItem ->
+        futureSchedules.sortedBy { it.date }.forEach { scheduleItem ->
             var hasSubjects = false
 
             // 各科目をチェック
