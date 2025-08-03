@@ -52,12 +52,7 @@ class ScheduleAdapter(
             nonEmptySubjects.joinToString("\n") { (i, s) -> "${i+1}限: $s" }
         }
 
-        // クリックリスナー設定
-        holder.cardView.setOnClickListener {
-            onItemClick?.invoke(item)
-        }
-
-        // タッチリスナー設定（長押し処理）
+        // タッチリスナー設定（長押し処理と通常クリック処理を統合）
         holder.cardView.setOnTouchListener { view, event ->
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
@@ -65,9 +60,19 @@ class ScheduleAdapter(
                     startLongPressTimer(view, item)
                     true
                 }
-                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                MotionEvent.ACTION_UP -> {
+                    val wasLongPressCompleted = longPressRunnable == null
                     cancelLongPress(view)
-                    false
+                    if (!wasLongPressCompleted) {
+                        // 長押しが完了していない場合のみ通常クリック
+                        onItemClick?.invoke(item)
+                    }
+                    // 長押しが完了した場合は何もしない（削除ダイアログは既に表示済み）
+                    true
+                }
+                MotionEvent.ACTION_CANCEL -> {
+                    cancelLongPress(view)
+                    true
                 }
                 else -> false
             }
@@ -77,21 +82,31 @@ class ScheduleAdapter(
     override fun getItemCount(): Int = items.size
 
     private fun startLongPressAnimation(view: View) {
-        val originalColor = Color.WHITE // デフォルトの白色
-        val pressedColor = Color.RED // プレス時の赤色
+        // CardViewの元の背景を保存
+        val originalBackground = view.background
+
+        // 色付きオーバーレイを作成してCardViewのスタイルを保持
+        val originalColor = 0x00FF0000 // 透明な赤
+        val pressedColor = 0xAAFF0000.toInt() // 半透明の赤
 
         val colorAnimator = ValueAnimator.ofArgb(originalColor, pressedColor)
         colorAnimator.duration = 5000 // 5秒
         colorAnimator.addUpdateListener { animator ->
+            // オーバーレイ色でCardViewのスタイルを保持したまま色を変更
             view.setBackgroundColor(animator.animatedValue as Int)
+            // 元の背景の上に色を重ねる効果を実現
+            view.foreground = android.graphics.drawable.ColorDrawable(animator.animatedValue as Int)
         }
         colorAnimator.start()
 
-        view.tag = colorAnimator
+        // タグにアニメーターと元の背景を保存
+        view.tag = mapOf("animator" to colorAnimator, "originalBackground" to originalBackground)
     }
 
     private fun startLongPressTimer(view: View, item: ScheduleItem) {
         longPressRunnable = Runnable {
+            // タイマー実行時にrunnableをnullにして、ACTION_UPで通常クリックが実行されないようにする
+            longPressRunnable = null
             showForcedDeleteDialog(view.context, item)
         }
         longPressHandler.postDelayed(longPressRunnable!!, 5000) // 5秒
@@ -103,9 +118,23 @@ class ScheduleAdapter(
             longPressRunnable = null
         }
 
-        // アニメーション停止と色をリセット
-        (view.tag as? ValueAnimator)?.cancel()
-        view.setBackgroundColor(Color.WHITE) // 白色にリセット
+        // 保存されたアニメーターと元の背景を取得
+        val tagMap = view.tag as? Map<String, Any>
+        val animator = tagMap?.get("animator") as? ValueAnimator
+        val originalBackground = tagMap?.get("originalBackground")
+
+        // アニメーション停止
+        animator?.cancel()
+
+        // CardViewを完全に元の状態に復元
+        if (originalBackground != null) {
+            view.background = originalBackground as android.graphics.drawable.Drawable
+        }
+
+        // オーバーレイを削除
+        view.foreground = null
+
+        view.tag = null
     }
 
     private fun showForcedDeleteDialog(context: android.content.Context, item: ScheduleItem) {

@@ -48,13 +48,29 @@ class DashboardFragment : Fragment() {
 
         // RecyclerView初期化
         val recyclerView = root.findViewById<RecyclerView>(R.id.scheduleList)
-        adapter = ScheduleAdapter(scheduleList) { dateToDelete ->
-            // 削除処理
-            scheduleRepository.deleteSchedule(dateToDelete)
-            scheduleList.clear()
-            scheduleList.addAll(scheduleRepository.loadSchedules())
-            adapter.notifyDataSetChanged()
-        }
+        adapter = ScheduleAdapter(
+            items = scheduleList,
+            onDeleteClick = { itemId ->
+                // IDで削除処理
+                val itemToDelete = scheduleList.find { it.id == itemId }
+                if (itemToDelete != null) {
+                    scheduleRepository.deleteSchedule(itemToDelete.date)
+                    adapter.removeItem(itemId)
+                }
+            },
+            onItemClick = { item ->
+                // アイテムクリック時の編集処理
+                showEditScheduleForm(item)
+            },
+            onEmptyScheduleDelete = { itemId ->
+                // 空スケジュール削除処理
+                val itemToDelete = scheduleList.find { it.id == itemId }
+                if (itemToDelete != null) {
+                    scheduleRepository.deleteSchedule(itemToDelete.date)
+                    adapter.removeItem(itemId)
+                }
+            }
+        )
         recyclerView.layoutManager = LinearLayoutManager(requireContext())
         recyclerView.adapter = adapter
 
@@ -192,6 +208,17 @@ class DashboardFragment : Fragment() {
             }
         }
         dialog.show()
+    }
+
+    // 編集用のフォームを表示する関数
+    private fun showEditScheduleForm(item: ScheduleItem) {
+        val dateParts = item.date.split("/")
+        if (dateParts.size == 3) {
+            val year = dateParts[0].toInt()
+            val month = dateParts[1].toInt() - 1 // Calendarは0ベース
+            val day = dateParts[2].toInt()
+            showAddScheduleForm(year, month, day)
+        }
     }
 
     override fun onDestroyView() {

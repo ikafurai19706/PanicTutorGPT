@@ -51,6 +51,19 @@ class MainActivity : AppCompatActivity() {
 
         // アプリ起動時にAPIキーが設定されていない場合はダイアログを表示
         checkAndShowApiKeyDialog()
+
+        // バックグラウンド脅迫サービスを開始
+        startThreatService()
+    }
+
+    private fun startThreatService() {
+        val serviceIntent = Intent(this, com.chatait.panictutorgpt.service.ThreatNotificationService::class.java)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            startForegroundService(serviceIntent)
+        } else {
+            startService(serviceIntent)
+        }
+        Log.d("MainActivity", "脅迫サービスを開始しました")
     }
 
     private fun checkAndShowApiKeyDialog() {
@@ -133,12 +146,25 @@ class MainActivity : AppCompatActivity() {
     }
 
     fun showNotification(title: String, message: String) {
+        // 通知をタップした時にアプリを起動するためのIntent
+        val intent = Intent(this, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+        }
+
+        val pendingIntent = PendingIntent.getActivity(
+            this,
+            0,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
         val builder = NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_launcher_foreground)
             .setContentTitle(title)
             .setContentText(message)
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .setAutoCancel(true)
+            .setContentIntent(pendingIntent) // 通知タップ時の動作を設定
 
         with(NotificationManagerCompat.from(this)) {
             if (ActivityCompat.checkSelfPermission(
