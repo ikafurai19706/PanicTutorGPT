@@ -61,13 +61,13 @@ class HomeFragment : Fragment() {
         handler.post(updateTimeRunnable)
 
         binding.registerButton.setOnClickListener {
-            (activity as? MainActivity)?.showNotification()
+            (activity as? MainActivity)?.sendTestReminder()
             Toast.makeText(context, "リマインダー通知を送信しました！", Toast.LENGTH_SHORT).show()
         }
 
         // 長押しでAPIキー設定ダイアログを表示
         binding.registerButton.setOnLongClickListener {
-            showApiKeySettingDialog()
+            (activity as? MainActivity)?.showApiKeySettingDialog()
             true
         }
 

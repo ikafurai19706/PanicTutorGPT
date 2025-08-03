@@ -6,6 +6,7 @@ import android.content.pm.PackageManager
 import android.os.*
 import android.util.Log
 import android.view.LayoutInflater
+import android.widget.EditText
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
@@ -20,6 +21,7 @@ import com.chatait.panictutorgpt.data.GeminiService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class MainActivity : AppCompatActivity() {
 
@@ -51,10 +53,41 @@ class MainActivity : AppCompatActivity() {
         checkAndShowApiKeyDialog()
     }
 
+    private fun checkAndShowApiKeyDialog() {
+        if (!geminiService.isApiKeySet()) {
+            showApiKeyDialog()
+        }
+    }
+
+    private fun showApiKeyDialog() {
+        val editText = EditText(this)
+        editText.hint = "Gemini API キーを入力してください"
+
+        AlertDialog.Builder(this)
+            .setTitle("API キー設定")
+            .setMessage("Gemini API を使用してリマインダーメッセージを生成するため、API キーが必要です。")
+            .setView(editText)
+            .setPositiveButton("設定") { _, _ ->
+                val apiKey = editText.text.toString().trim()
+                if (apiKey.isNotEmpty()) {
+                    geminiService.saveApiKey(apiKey)
+                    Toast.makeText(this, "API キーが設定されました", Toast.LENGTH_SHORT).show()
+                } else {
+                    Toast.makeText(this, "API キーが空です", Toast.LENGTH_SHORT).show()
+                }
+            }
+            .setNegativeButton("後で") { dialog, _ ->
+                dialog.dismiss()
+                Toast.makeText(this, "デフォルトメッセージを使用します", Toast.LENGTH_SHORT).show()
+            }
+            .setCancelable(false)
+            .show()
+    }
+
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val name = "PanicTutor通知"
-            val descriptionText = "テスト予定の通知チャンネル"
+            val name = "Default Channel"
+            val descriptionText = "Default notification channel"
             val importance = NotificationManager.IMPORTANCE_DEFAULT
             val channel = NotificationChannel(CHANNEL_ID, name, importance).apply {
                 description = descriptionText
@@ -67,162 +100,136 @@ class MainActivity : AppCompatActivity() {
 
     private fun requestNotificationPermission() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.POST_NOTIFICATIONS)
-                != PackageManager.PERMISSION_GRANTED
+            if (ContextCompat.checkSelfPermission(
+                    this,
+                    android.Manifest.permission.POST_NOTIFICATIONS
+                ) != PackageManager.PERMISSION_GRANTED
             ) {
                 ActivityCompat.requestPermissions(
                     this,
                     arrayOf(android.Manifest.permission.POST_NOTIFICATIONS),
-                    NOTIFICATION_PERMISSION_REQUEST_CODE
+                    101
                 )
             }
         }
     }
 
-    fun showNotification() {
-        // Android 13以降で通知パーミッションが付与されているか確認
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.POST_NOTIFICATIONS)
-                != PackageManager.PERMISSION_GRANTED
-            ) {
-                Log.e("MainActivity", "通知パーミッションが付与されていません")
-                Toast.makeText(this, "通知パーミッションが必要です", Toast.LENGTH_SHORT).show()
-                return
-            }
-        }
-
-        val title = "⚠️ テスト予定リマインダー"
-        Log.d("MainActivity", "リマインダー通知の生成を開始します")
-
-        // OpenAI APIを使って動的にメッセージを生成
-        CoroutineScope(Dispatchers.Main).launch {
+    fun sendTestReminder() {
+        CoroutineScope(Dispatchers.IO).launch {
             try {
-                val text = getRandomScaryMessage()
-                Log.d("MainActivity", "メッセージ生成完了: $text")
+                val message = geminiService.generateReminderMessage()
 
-                val intent = Intent(this@MainActivity, MainActivity::class.java).apply {
-                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+                withContext(Dispatchers.Main) {
+                    showNotification("テスト勉強リマインダー", message)
                 }
-                val pendingIntentRequestCode = System.currentTimeMillis().toInt()
-                val pendingIntent: PendingIntent = PendingIntent.getActivity(
-                    this@MainActivity,
-                    pendingIntentRequestCode,
-                    intent,
-                    PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
-                )
-
-                val builder = NotificationCompat.Builder(this@MainActivity, CHANNEL_ID)
-                    .setSmallIcon(R.drawable.ic_launcher_foreground)
-                    .setContentTitle(title)
-                    .setContentText(text)
-                    .setPriority(NotificationCompat.PRIORITY_DEFAULT)
-                    .setContentIntent(pendingIntent)
-                    .setAutoCancel(true)
-
-                try {
-                    with(NotificationManagerCompat.from(this@MainActivity)) {
-                        val notificationId = System.currentTimeMillis().toInt()
-                        notify(notificationId, builder.build())
-                        Log.d("MainActivity", "通知を正常に送信しました (ID: $notificationId)")
-                    }
-
-                    saveNotificationToHistory(title, text)
-                    Log.d("MainActivity", "通知履歴を保存しました")
-
-                } catch (e: SecurityException) {
-                    Log.e("MainActivity", "通知送信に失敗しました - セキュリティエラー: ${e.message}")
-                    Toast.makeText(this@MainActivity, "通知送信に失敗しました", Toast.LENGTH_SHORT).show()
-                } catch (e: Exception) {
-                    Log.e("MainActivity", "通知送信中に予期しないエラーが発生しました: ${e.message}", e)
-                    Toast.makeText(this@MainActivity, "通知送信エラーが発生しました", Toast.LENGTH_SHORT).show()
-                }
-
             } catch (e: Exception) {
-                Log.e("MainActivity", "リマインダー生成中にエラーが発生しました: ${e.message}", e)
-                Toast.makeText(this@MainActivity, "リマインダー生成に失敗しました", Toast.LENGTH_SHORT).show()
-            }
-        }
-    }
+                Log.e("MainActivity", "リマインダー送信時にエラーが発生しました: ${e.message}", e)
 
-    private suspend fun getRandomScaryMessage(): String {
-        return geminiService.generateScaryMessage()
-    }
-
-    private fun saveNotificationToHistory(title: String, message: String) {
-        val prefs = getSharedPreferences("notification_history", MODE_PRIVATE)
-        val history = prefs.getStringSet("history", null)?.toMutableSet() ?: mutableSetOf()
-        val timestamp = java.text.SimpleDateFormat("MM/dd HH:mm", java.util.Locale.getDefault()).format(java.util.Date())
-        history.add("[$timestamp] $title|$message")
-
-        prefs.edit()
-            .putStringSet("history", history)
-            .apply()
-    }
-
-    private fun checkAndShowApiKeyDialog() {
-        if (!geminiService.isApiKeySet()) {
-            showApiKeySettingDialog()
-        }
-    }
-
-    private fun showApiKeySettingDialog() {
-        val dialogView = LayoutInflater.from(this).inflate(R.layout.dialog_api_key_setting, null)
-        val editTextApiKey = dialogView.findViewById<android.widget.EditText>(R.id.editTextApiKey)
-        val buttonSave = dialogView.findViewById<android.widget.Button>(R.id.buttonSaveApiKey)
-        val textViewStatus = dialogView.findViewById<android.widget.TextView>(R.id.textViewStatus)
-
-        // 現在の設定状態を表示
-        if (geminiService.isApiKeySet()) {
-            textViewStatus.text = "APIキーが設定されています"
-            textViewStatus.setTextColor(resources.getColor(android.R.color.holo_green_dark, null))
-        } else {
-            textViewStatus.text = "APIキーが設定されていません"
-            textViewStatus.setTextColor(resources.getColor(android.R.color.holo_red_dark, null))
-        }
-
-        val dialog = AlertDialog.Builder(this)
-            .setTitle("Google Gemini API設定")
-            .setMessage("AIが生成する個性的な通知メッセージを受け取るには、Google Gemini APIキーの設定が必要です。")
-            .setView(dialogView)
-            .setNegativeButton("後で設定") { _, _ ->
-                Toast.makeText(this, "ホーム画面の通知ボタンを長押しで後から設定できます", Toast.LENGTH_LONG).show()
-            }
-            .setCancelable(false)
-            .create()
-
-        buttonSave.setOnClickListener {
-            val apiKey = editTextApiKey.text.toString().trim()
-            if (apiKey.isNotEmpty()) {
-                geminiService.saveApiKey(apiKey)
-                Toast.makeText(this, "APIキーが保存されました", Toast.LENGTH_SHORT).show()
-                dialog.dismiss()
-            } else {
-                Toast.makeText(this, "APIキーを入力してください", Toast.LENGTH_SHORT).show()
-            }
-        }
-
-        dialog.show()
-    }
-
-    override fun onRequestPermissionsResult(
-        requestCode: Int,
-        permissions: Array<out String>,
-        grantResults: IntArray
-    ) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        when (requestCode) {
-            NOTIFICATION_PERMISSION_REQUEST_CODE -> {
-                if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                    // パーミッションが付与された
-                } else {
-                    // パーミッションが拒否された
+                withContext(Dispatchers.Main) {
+                    showNotification("テスト勉強リマインダー", "勉強を始めましょう！")
                 }
-                return
             }
         }
     }
 
-    companion object {
-        private const val NOTIFICATION_PERMISSION_REQUEST_CODE = 1001
+    fun showNotification(title: String, message: String) {
+        val builder = NotificationCompat.Builder(this, CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_launcher_foreground)
+            .setContentTitle(title)
+            .setContentText(message)
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setAutoCancel(true)
+
+        with(NotificationManagerCompat.from(this)) {
+            if (ActivityCompat.checkSelfPermission(
+                    this@MainActivity,
+                    android.Manifest.permission.POST_NOTIFICATIONS
+                ) == PackageManager.PERMISSION_GRANTED
+            ) {
+                notify(Random().nextInt(), builder.build())
+            }
+        }
+    }
+
+    fun showApiKeySettingDialog() {
+        showApiKeyDialog()
+    }
+
+    override fun onPause() {
+        super.onPause()
+        // アプリがバックグラウンドに移行した時に脅迫メッセージをチェック
+        checkAndSendThreatMessage()
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        // アプリが完全に閉じられた時にも脅迫メッセージをチェック
+        checkAndSendThreatMessage()
+    }
+
+    private fun checkAndSendThreatMessage() {
+        val scheduleRepository = com.chatait.panictutorgpt.data.ScheduleRepository(this)
+        val upcomingTests = getTestsWithinOneWeek(scheduleRepository)
+
+        if (upcomingTests.isNotEmpty()) {
+            sendThreatNotification(upcomingTests)
+        }
+    }
+
+    private fun getTestsWithinOneWeek(scheduleRepository: com.chatait.panictutorgpt.data.ScheduleRepository): List<Pair<String, List<String>>> {
+        val schedules = scheduleRepository.loadSchedules()
+        val dateFormat = java.text.SimpleDateFormat("yyyy/MM/dd", java.util.Locale.getDefault())
+        val currentTime = System.currentTimeMillis()
+        val oneWeekFromNow = currentTime + (7 * 24 * 60 * 60 * 1000)
+
+        return schedules.mapNotNull { scheduleItem ->
+            try {
+                val testDate = dateFormat.parse(scheduleItem.date)?.time
+                if (testDate != null && testDate in currentTime..oneWeekFromNow) {
+                    val subjects = scheduleItem.subjects.filter { it.isNotBlank() }
+                    if (subjects.isNotEmpty()) {
+                        Pair(scheduleItem.date, subjects)
+                    } else null
+                } else null
+            } catch (e: Exception) {
+                null
+            }
+        }
+    }
+
+    private fun sendThreatNotification(upcomingTests: List<Pair<String, List<String>>>) {
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val testInfo = upcomingTests.joinToString("、") { (date, subjects) ->
+                    "${date}: ${subjects.joinToString("、")}"
+                }
+
+                val threatMessage = geminiService.generateThreatMessage(testInfo)
+
+                withContext(Dispatchers.Main) {
+                    showNotification("🚨 緊急警告 🚨", threatMessage)
+                }
+            } catch (e: Exception) {
+                Log.e("MainActivity", "脅迫メッセージ送信時にエラー: ${e.message}", e)
+
+                withContext(Dispatchers.Main) {
+                    val fallbackMessage = generateFallbackThreatMessage(upcomingTests)
+                    showNotification("🚨 緊急警告 🚨", fallbackMessage)
+                }
+            }
+        }
+    }
+
+    private fun generateFallbackThreatMessage(upcomingTests: List<Pair<String, List<String>>>): String {
+        val subjects = upcomingTests.flatMap { it.second }.distinct()
+        val threatMessages = listOf(
+            "逃げても無駄です...${subjects.joinToString("、")}のテストが迫っています...",
+            "アプリを閉じても現実は変わりません。${subjects.joinToString("、")}の準備はできていますか？",
+            "恐怖の時間が始まります...${subjects.joinToString("、")}で良い点を取れなければ...",
+            "運命の日が近づいています。${subjects.joinToString("、")}の勉強を怠れば後悔することになります...",
+            "暗闇の中で${subjects.joinToString("、")}のテストがあなたを見つめています...",
+            "時間は容赦なく過ぎています...${subjects.joinToString("、")}の準備はまだ終わっていませんね？"
+        )
+        return threatMessages.random()
     }
 }

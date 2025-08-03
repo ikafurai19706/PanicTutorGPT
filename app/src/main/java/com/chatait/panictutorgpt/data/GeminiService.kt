@@ -2,6 +2,7 @@ package com.chatait.panictutorgpt.data
 
 import android.content.Context
 import android.util.Log
+import androidx.core.content.edit
 import com.google.gson.Gson
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -28,14 +29,16 @@ class GeminiService(private val context: Context) {
 
     fun saveApiKey(apiKey: String) {
         val prefs = context.getSharedPreferences("gemini_config", Context.MODE_PRIVATE)
-        prefs.edit().putString("api_key", apiKey).apply()
+        prefs.edit {
+            putString("api_key", apiKey)
+        }
     }
 
     fun isApiKeySet(): Boolean {
         return !getApiKey().isNullOrEmpty()
     }
 
-    suspend fun generateScaryMessage(): String {
+    suspend fun generateReminderMessage(): String {
         return withContext(Dispatchers.IO) {
             try {
                 val apiKey = getApiKey()
@@ -52,7 +55,8 @@ class GeminiService(private val context: Context) {
                             parts = listOf(
                                 Part(
                                     text = """
-                                        
+                                        あなたは学生のテスト勉強を促す、脅迫的なリマインダーアシスタントです。
+                                        日本語で、短く、勉強を促す緊迫感のあるメッセージを1つだけ生成してください。
                                     """.trimIndent()
                                 )
                             )
@@ -65,8 +69,8 @@ class GeminiService(private val context: Context) {
 
                 val request = Request.Builder()
                     .url("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent")
-                    .addHeader("Content-Type", "application/json")
                     .addHeader("X-goog-api-key", apiKey)
+                    .addHeader("Content-Type", "application/json")
                     .post(body)
                     .build()
 
@@ -74,26 +78,99 @@ class GeminiService(private val context: Context) {
 
                 if (response.isSuccessful) {
                     val responseBody = response.body?.string()
-                    responseBody?.let {
-                        val geminiResponse = gson.fromJson(it, GeminiResponse::class.java)
-                        val aiMessage = geminiResponse.candidates?.firstOrNull()?.content?.parts?.firstOrNull()?.text?.trim()
-                        if (!aiMessage.isNullOrEmpty()) {
-                            Log.d("GeminiService", "Gemini 2.0 Flash APIからメッセージを取得しました: $aiMessage")
-                            return@withContext aiMessage
+                    responseBody?.let { responseString ->
+                        try {
+                            val geminiResponse = gson.fromJson(responseString, GeminiResponse::class.java)
+                            val aiMessage = geminiResponse.candidates?.firstOrNull()?.content?.parts?.firstOrNull()?.text?.trim()
+                            if (!aiMessage.isNullOrEmpty()) {
+                                Log.d("GeminiService", "Gemini APIからメッセージを取得しました: $aiMessage")
+                                return@withContext aiMessage
+                            }
+                        } catch (e: Exception) {
+                            Log.e("GeminiService", "レスポンス解析エラー: ${e.message}")
+                            Log.e("GeminiService", "Response body: $responseString")
                         }
                     }
+                } else {
+                    Log.e("GeminiService", "API request failed: ${response.code} - ${response.message}")
+                    Log.e("GeminiService", "Response body: ${response.body?.string()}")
                 }
 
-                Log.e("GeminiService", "API request failed: ${response.code} - ${response.message}")
-                Log.e("GeminiService", "Response body: ${response.body?.string()}")
                 return@withContext getFallbackMessage()
 
             } catch (e: IOException) {
-                Log.e("GeminiService", "Network error: ${e.message}")
+                Log.e("GeminiService", "ネットワークエラー: ${e.message}")
                 return@withContext getFallbackMessage()
             } catch (e: Exception) {
-                Log.e("GeminiService", "Unexpected error: ${e.message}", e)
+                Log.e("GeminiService", "予期しないエラー: ${e.message}")
                 return@withContext getFallbackMessage()
+            }
+        }
+    }
+
+    suspend fun generateThreatMessage(testInfo: String): String {
+        return withContext(Dispatchers.IO) {
+            try {
+                val apiKey = getApiKey()
+                if (apiKey.isNullOrEmpty()) {
+                    Log.w("GeminiService", "APIキーが設定されていません。フォールバック脅迫メッセージを使用します。")
+                    return@withContext getThreatFallbackMessage(testInfo)
+                }
+
+                Log.d("GeminiService", "Gemini 2.0 Flash APIで脅迫メッセージを生成します...")
+
+                val requestBody = GeminiRequest(
+                    contents = listOf(
+                        Content(
+                            parts = listOf(
+                                Part(
+                                    text = "あなたは学生に恐怖を与える悪魔的なテスト監督です。以下のテスト情報を元に、日本語で非常に脅迫的で恐ろしいメッセージを生成してください。アプリを閉じて逃げようとした学生を追い詰めるような、背筋が凍るような内容にしてください。絵文字を使って恐怖感を演出し、50文字以内で作成してください。\n\nテスト情報: $testInfo"
+                                )
+                            )
+                        )
+                    )
+                )
+
+                val json = gson.toJson(requestBody)
+                val body = json.toRequestBody("application/json".toMediaType())
+
+                val request = Request.Builder()
+                    .url("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent")
+                    .addHeader("X-goog-api-key", apiKey)
+                    .addHeader("Content-Type", "application/json")
+                    .post(body)
+                    .build()
+
+                val response = client.newCall(request).execute()
+
+                if (response.isSuccessful) {
+                    val responseBody = response.body?.string()
+                    responseBody?.let { responseString ->
+                        try {
+                            val geminiResponse = gson.fromJson(responseString, GeminiResponse::class.java)
+                            val aiMessage = geminiResponse.candidates?.firstOrNull()?.content?.parts?.firstOrNull()?.text?.trim()
+                            if (!aiMessage.isNullOrEmpty()) {
+                                Log.d("GeminiService", "Gemini APIから脅迫メッセージを取得しました: $aiMessage")
+                                return@withContext aiMessage
+                            }
+                        } catch (e: Exception) {
+                            Log.e("GeminiService", "脅迫メッセージレスポンス解析エラー: ${e.message}")
+                            Log.e("GeminiService", "Response body: $responseString")
+                        }
+                    }
+                } else {
+                    Log.e("GeminiService", "脅迫メッセージAPI request failed: ${response.code} - ${response.message}")
+                    Log.e("GeminiService", "Response body: ${response.body?.string()}")
+                }
+
+                return@withContext getThreatFallbackMessage(testInfo)
+
+            } catch (e: IOException) {
+                Log.e("GeminiService", "脅迫メッセージネットワークエラー: ${e.message}")
+                return@withContext getThreatFallbackMessage(testInfo)
+            } catch (e: Exception) {
+                Log.e("GeminiService", "脅迫メッセージ予期しないエラー: ${e.message}")
+                return@withContext getThreatFallbackMessage(testInfo)
             }
         }
     }
@@ -106,17 +183,28 @@ class GeminiService(private val context: Context) {
             "時間は刻一刻と過ぎています。準備はお済みですか？",
             "本当にそれでいいのですか？今から始めれば間に合います！",
             "テスト当日まであとわずか...準備を忘れずに！",
-            "勉強しないと...後悔することになりますよ？",
-            "もう逃げ場はありません...今すぐ勉強開始！",
-            "このままでは本当にヤバいですよ？",
-            "テスト結果が心配で夜も眠れません..."
+            "勉強しないと...後悔することになりますよ？"
         )
         val selectedMessage = fallbackMessages.random()
         Log.d("GeminiService", "フォールバックメッセージを使用: $selectedMessage")
         return selectedMessage
     }
 
-    // データクラス定義（Gemini 2.0 Flash API用）
+    private fun getThreatFallbackMessage(testInfo: String): String {
+        val threatMessages = listOf(
+            "💀 逃げても無駄...テストの恐怖があなたを追いかけます 💀",
+            "🔥 アプリを閉じても現実は変わらない...準備はできていますか？ 🔥",
+            "👻 暗闇からテストがあなたを見つめています... 👻",
+            "⚡ 運命の時が近づいています...震えて待て ⚡",
+            "🌪️ 嵐のようなテストがやってきます...覚悟はいいですか？ 🌪️",
+            "💥 時間は容赦なく過ぎています...後悔の時が来る 💥"
+        )
+        val selectedMessage = threatMessages.random()
+        Log.d("GeminiService", "フォールバック脅迫メッセージを使用: $selectedMessage")
+        return selectedMessage
+    }
+
+    // Gemini API用データクラス定義
     data class GeminiRequest(
         val contents: List<Content>
     )
