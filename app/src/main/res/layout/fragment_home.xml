@@ -12,8 +12,9 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_marginBottom="16dp"
-        android:textSize="24sp"
+        android:textSize="36sp"
         android:textStyle="bold"
+        android:gravity="center"
         tools:text="2025/08/03 08:33:51.24" />
 
     <TextView

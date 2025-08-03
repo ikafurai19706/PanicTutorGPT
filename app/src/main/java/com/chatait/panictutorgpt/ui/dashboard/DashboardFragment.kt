@@ -74,6 +74,9 @@ class DashboardFragment : Fragment() {
         recyclerView.layoutManager = LinearLayoutManager(requireContext())
         recyclerView.adapter = adapter
 
+        // カレンダービューの設定
+        setupCalendarView()
+
         // 予定追加ボタンのクリックリスナー
         binding.dashboardEntryButton.setOnClickListener {
             val calendar = Calendar.getInstance()
@@ -219,6 +222,51 @@ class DashboardFragment : Fragment() {
             val day = dateParts[2].toInt()
             showAddScheduleForm(year, month, day)
         }
+    }
+
+    // カレンダービューの設定
+    private fun setupCalendarView() {
+        binding.calendarView.apply {
+            // 日付クリック時の処理
+            setOnDateChangeListener { _, year, month, dayOfMonth ->
+                val selectedDate = "%04d/%02d/%02d".format(year, month + 1, dayOfMonth)
+
+                // 選択された日付のテスト予定を表示
+                val existingSchedule = scheduleList.find { it.date == selectedDate }
+                if (existingSchedule != null) {
+                    showScheduleDetailsDialog(existingSchedule)
+                } else {
+                    // 予定がない場合は新規追加フォームを表示
+                    showAddScheduleForm(year, month, dayOfMonth)
+                }
+            }
+
+            // 今日の日付に設定
+            val today = Calendar.getInstance()
+            date = today.timeInMillis
+        }
+    }
+
+    // 選択された日付のテスト予定詳細を表示
+    private fun showScheduleDetailsDialog(schedule: ScheduleItem) {
+        val subjects = schedule.subjects.withIndex()
+            .filter { it.value.isNotBlank() }
+            .joinToString("\n") { (index, subject) -> "${index + 1}限: $subject" }
+
+        val message = if (subjects.isEmpty()) {
+            "この日はテスト予定がありません"
+        } else {
+            "📅 ${schedule.date}\n\n$subjects"
+        }
+
+        AlertDialog.Builder(requireContext())
+            .setTitle("テスト予定")
+            .setMessage(message)
+            .setPositiveButton("編集") { _, _ ->
+                showEditScheduleForm(schedule)
+            }
+            .setNegativeButton("閉じる", null)
+            .show()
     }
 
     override fun onDestroyView() {

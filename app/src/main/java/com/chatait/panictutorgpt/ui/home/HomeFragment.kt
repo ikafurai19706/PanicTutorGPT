@@ -31,11 +31,11 @@ class HomeFragment : Fragment() {
     // (時, 分) のペアで授業開始時刻を定義
     private val classStartTimes = listOf(
         Pair(9, 0),    // 1限
-        Pair(10, 40),  // 2限
-        Pair(13, 0),   // 3限
-        Pair(14, 40),  // 4限
-        Pair(16, 20),  // 5限
-        Pair(18, 0)    // 6限
+        Pair(10, 20),  // 2限
+        Pair(11, 40),   // 3限
+        Pair(13, 20),  // 4限
+        Pair(14, 40),  // 5限
+        Pair(16, 0)    // 6限
     )
     // ▲▲▲ ▲▲▲ ▲▲▲ ▲▲▲ ▲▲▲ ▲▲▲ ▲▲▲ ▲▲▲
 
@@ -152,7 +152,7 @@ class HomeFragment : Fragment() {
 
     private fun updateDateTime() {
         val currentTime = Calendar.getInstance().time
-        val sdf = SimpleDateFormat("yyyy/MM/dd HH:mm:ss.SS", Locale.getDefault())
+        val sdf = SimpleDateFormat("yyyy/MM/dd\nHH:mm:ss.SS", Locale.getDefault())
         sdf.timeZone = TimeZone.getTimeZone("Asia/Tokyo")
         binding.dateTimeText.text = sdf.format(currentTime)
     }
