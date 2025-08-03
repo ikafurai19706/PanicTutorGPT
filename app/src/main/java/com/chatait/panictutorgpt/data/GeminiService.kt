@@ -174,6 +174,182 @@ class GeminiService(private val context: Context) {
         }
     }
 
+    suspend fun generateQuizQuestion(subject: String): QuizQuestion? {
+        return withContext(Dispatchers.IO) {
+            try {
+                val apiKey = getApiKey()
+                if (apiKey.isNullOrEmpty()) {
+                    Log.w("GeminiService", "APIキーが設定されていません。")
+                    return@withContext null
+                }
+
+                Log.d("GeminiService", "Gemini 2.0 Flash APIで確認テスト問題を生成します...")
+
+                val requestBody = GeminiRequest(
+                    contents = listOf(
+                        Content(
+                            parts = listOf(
+                                Part(
+                                    text = """
+                                        あなたは大学の教授です。「${subject}」に関する確認テスト問題を1問作成してください。
+                                        
+                                        以下の形式で出力してください：
+                                        問題: [問題文]
+                                        解答: [正解]
+                                        
+                                        - 問題は大学レベルの内容で、簡潔で明確にしてください
+                                        - 解答は簡潔で正確にしてください
+                                        - 記述式の問題にしてください
+                                    """.trimIndent()
+                                )
+                            )
+                        )
+                    )
+                )
+
+                val json = gson.toJson(requestBody)
+                val body = json.toRequestBody("application/json".toMediaType())
+
+                val request = Request.Builder()
+                    .url("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent")
+                    .addHeader("X-goog-api-key", apiKey)
+                    .addHeader("Content-Type", "application/json")
+                    .post(body)
+                    .build()
+
+                val response = client.newCall(request).execute()
+
+                if (response.isSuccessful) {
+                    val responseBody = response.body?.string()
+                    responseBody?.let { responseString ->
+                        try {
+                            val geminiResponse = gson.fromJson(responseString, GeminiResponse::class.java)
+                            val aiResponse = geminiResponse.candidates?.firstOrNull()?.content?.parts?.firstOrNull()?.text?.trim()
+
+                            if (!aiResponse.isNullOrEmpty()) {
+                                return@withContext parseQuizResponse(aiResponse, subject)
+                            }
+                        } catch (e: Exception) {
+                            Log.e("GeminiService", "確認テストレスポンス解析エラー: ${e.message}")
+                        }
+                    }
+                } else {
+                    Log.e("GeminiService", "確認テストAPI request failed: ${response.code}")
+                }
+
+                return@withContext null
+
+            } catch (e: Exception) {
+                Log.e("GeminiService", "確認テスト生成エラー: ${e.message}")
+                return@withContext null
+            }
+        }
+    }
+
+    suspend fun generateInsultMessages(subject: String, wrongAnswer: String, correctAnswer: String): List<String> {
+        return withContext(Dispatchers.IO) {
+            try {
+                val apiKey = getApiKey()
+                if (apiKey.isNullOrEmpty()) {
+                    Log.w("GeminiService", "APIキーが設定されていません。フォールバック罵倒メッセージを使用します。")
+                    return@withContext getFallbackInsultMessages(subject)
+                }
+
+                Log.d("GeminiService", "Gemini 2.0 Flash APIで罵倒メッセージを生成します...")
+
+                val requestBody = GeminiRequest(
+                    contents = listOf(
+                        Content(
+                            parts = listOf(
+                                Part(
+                                    text = """
+                                        あなたは学生を徹底的に罵倒する悪魔的な教師です。学生が「${subject}」の問題を間違えました。
+                                        
+                                        間違えた解答: ${wrongAnswer}
+                                        正しい解答: ${correctAnswer}
+                                        
+                                        この学生に対して、あり得ないほど厳しく罵倒するメッセージを10個生成してください。
+                                        各メッセージは30文字以内で、絵文字を使って恐怖感を演出してください。
+                                        学生の自尊心を粉々に砕くような内容にしてください。
+                                        
+                                        各メッセージは改行で区切ってください。
+                                    """.trimIndent()
+                                )
+                            )
+                        )
+                    )
+                )
+
+                val json = gson.toJson(requestBody)
+                val body = json.toRequestBody("application/json".toMediaType())
+
+                val request = Request.Builder()
+                    .url("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent")
+                    .addHeader("X-goog-api-key", apiKey)
+                    .addHeader("Content-Type", "application/json")
+                    .post(body)
+                    .build()
+
+                val response = client.newCall(request).execute()
+
+                if (response.isSuccessful) {
+                    val responseBody = response.body?.string()
+                    responseBody?.let { responseString ->
+                        try {
+                            val geminiResponse = gson.fromJson(responseString, GeminiResponse::class.java)
+                            val aiResponse = geminiResponse.candidates?.firstOrNull()?.content?.parts?.firstOrNull()?.text?.trim()
+
+                            if (!aiResponse.isNullOrEmpty()) {
+                                val messages = aiResponse.split("\n").filter { it.isNotBlank() }.take(10)
+                                if (messages.isNotEmpty()) {
+                                    Log.d("GeminiService", "Gemini APIから罵倒メッセージを取得しました: ${messages.size}件")
+                                    return@withContext messages
+                                }
+                            }
+                        } catch (e: Exception) {
+                            Log.e("GeminiService", "罵倒メッセージレスポンス解析エラー: ${e.message}")
+                        }
+                    }
+                } else {
+                    Log.e("GeminiService", "罵倒メッセージAPI request failed: ${response.code}")
+                }
+
+                return@withContext getFallbackInsultMessages(subject)
+
+            } catch (e: Exception) {
+                Log.e("GeminiService", "罵倒メッセージ生成エラー: ${e.message}")
+                return@withContext getFallbackInsultMessages(subject)
+            }
+        }
+    }
+
+    private fun parseQuizResponse(response: String, subject: String): QuizQuestion? {
+        try {
+            val lines = response.split("\n").map { it.trim() }
+            var question = ""
+            var answer = ""
+
+            for (line in lines) {
+                when {
+                    line.startsWith("問題:") -> question = line.substring(3).trim()
+                    line.startsWith("解答:") -> answer = line.substring(3).trim()
+                }
+            }
+
+            if (question.isNotEmpty() && answer.isNotEmpty()) {
+                return QuizQuestion(question, answer)
+            }
+        } catch (e: Exception) {
+            Log.e("GeminiService", "問題解析エラー: ${e.message}")
+        }
+
+        // フォールバック問題
+        return QuizQuestion(
+            question = "${subject}について重要なポイントを1つ説明してください。",
+            correctAnswer = "基本的な概念や原理について正確に説明すること"
+        )
+    }
+
     private fun getFallbackMessage(): String {
         val fallbackMessages = listOf(
             "締め切りが迫っています！今すぐ勉強を始めましょう！",
@@ -203,6 +379,21 @@ class GeminiService(private val context: Context) {
         return selectedMessage
     }
 
+    private fun getFallbackInsultMessages(subject: String): List<String> {
+        return listOf(
+            "💀 ${subject}もできないなんて...絶望的ですね 💀",
+            "🔥 その程度の理解力で大学生？信じられません 🔥",
+            "👻 もう諦めた方がいいのでは？ 👻",
+            "⚡ ${subject}の基本も分からないなんて...呆れます ⚡",
+            "🌪️ 勉強のやり直しが必要ですね 🌪️",
+            "💥 このレベルでテストに臨むつもりですか？ 💥",
+            "😈 ${subject}を舐めすぎています 😈",
+            "🔪 単位取得は夢のまた夢ですね 🔪",
+            "💣 もっと真剣に勉強してください 💣",
+            "🖤 失望しました...本当に失望しました 🖤"
+        )
+    }
+
     // Gemini API用データクラス定義
     data class GeminiRequest(
         val contents: List<Content>
@@ -230,5 +421,10 @@ class GeminiService(private val context: Context) {
 
     data class PartResponse(
         val text: String?
+    )
+
+    data class QuizQuestion(
+        val question: String,
+        val correctAnswer: String
     )
 }

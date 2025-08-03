@@ -10,11 +10,13 @@ import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.core.view.isVisible
 import androidx.fragment.app.Fragment
+import androidx.lifecycle.lifecycleScope
 import com.chatait.panictutorgpt.MainActivity
 import com.chatait.panictutorgpt.R
 import com.chatait.panictutorgpt.data.GeminiService
 import com.chatait.panictutorgpt.data.ScheduleRepository
 import com.chatait.panictutorgpt.databinding.FragmentHomeBinding
+import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.*
 import java.util.concurrent.TimeUnit
@@ -272,27 +274,30 @@ class HomeFragment : Fragment() {
         buttonSave.setOnClickListener {
             val checkedItems = checklistAdapter.getCheckedItems()
             if (checkedItems.isNotEmpty()) {
-                // 勉強記録を保存
-                val studyRepository = com.chatait.panictutorgpt.data.StudyRepository(requireContext())
-                val today = java.text.SimpleDateFormat("yyyy/MM/dd", java.util.Locale.getDefault()).format(java.util.Date())
+                // 確認テストを開始
+                startConfirmationQuiz(checkedItems) { completedItems ->
+                    // 勉強記録を保存
+                    val studyRepository = com.chatait.panictutorgpt.data.StudyRepository(requireContext())
+                    val today = java.text.SimpleDateFormat("yyyy/MM/dd", java.util.Locale.getDefault()).format(java.util.Date())
 
-                checkedItems.forEach { item ->
-                    val studyRecord = com.chatait.panictutorgpt.data.StudyRecord(
-                        date = item.date,
-                        subject = item.subject,
-                        period = item.period,
-                        studyDate = today  // 勉強した日付を追加
-                    )
-                    studyRepository.saveStudyRecord(studyRecord)
+                    completedItems.forEach { item ->
+                        val studyRecord = com.chatait.panictutorgpt.data.StudyRecord(
+                            date = item.date,
+                            subject = item.subject,
+                            period = item.period,
+                            studyDate = today
+                        )
+                        studyRepository.saveStudyRecord(studyRecord)
+                    }
+
+                    val studiedSubjects = completedItems.joinToString("、") { "${it.date} ${it.period}限: ${it.subject}" }
+                    Toast.makeText(
+                        requireContext(),
+                        "お疲れさまでした！\n勉強した科目: $studiedSubjects",
+                        Toast.LENGTH_LONG
+                    ).show()
+                    dialog.dismiss()
                 }
-
-                val studiedSubjects = checkedItems.joinToString("、") { "${it.date} ${it.period}限: ${it.subject}" }
-                Toast.makeText(
-                    requireContext(),
-                    "お疲れさまでした！\n勉強した科目: $studiedSubjects",
-                    Toast.LENGTH_LONG
-                ).show()
-                dialog.dismiss()
             } else {
                 Toast.makeText(requireContext(), "勉強した科目を選択してください", Toast.LENGTH_SHORT).show()
             }
@@ -332,6 +337,207 @@ class HomeFragment : Fragment() {
         }
 
         dialog.show()
+    }
+
+    /**
+     * 確認テストを開始する
+     */
+    private fun startConfirmationQuiz(
+        checkedItems: List<ChecklistItem>,
+        onComplete: (List<ChecklistItem>) -> Unit
+    ) {
+        if (checkedItems.isEmpty()) {
+            onComplete(checkedItems)
+            return
+        }
+
+        var currentIndex = 0
+        val wrongAnswers = mutableListOf<Pair<ChecklistItem, String>>() // 間違えた問題と解答を記録
+
+        fun showNextQuiz() {
+            if (currentIndex >= checkedItems.size) {
+                // 全ての問題が完了
+                if (wrongAnswers.isNotEmpty()) {
+                    // 間違えた問題がある場合は罵倒通知を送信
+                    sendInsultNotifications(wrongAnswers)
+                }
+                onComplete(checkedItems)
+                return
+            }
+
+            val currentItem = checkedItems[currentIndex]
+            showQuizDialog(currentItem) { userAnswer, isCorrect ->
+                if (!isCorrect && userAnswer.isNotEmpty()) {
+                    wrongAnswers.add(Pair(currentItem, userAnswer))
+                }
+                currentIndex++
+                showNextQuiz()
+            }
+        }
+
+        showNextQuiz()
+    }
+
+    /**
+     * 個別の確認テストダイアログを表示
+     */
+    private fun showQuizDialog(
+        item: ChecklistItem,
+        onAnswered: (userAnswer: String, isCorrect: Boolean) -> Unit
+    ) {
+        val geminiService = GeminiService(requireContext())
+
+        // ローディングダイアログを表示
+        val loadingDialog = AlertDialog.Builder(requireContext())
+            .setTitle("確認テスト準備中...")
+            .setMessage("${item.subject}の問題を生成しています...")
+            .setCancelable(false)
+            .create()
+        loadingDialog.show()
+
+        // 問題を生成
+        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Main).launch {
+            try {
+                val quizQuestion = geminiService.generateQuizQuestion(item.subject)
+                loadingDialog.dismiss()
+
+                if (quizQuestion != null) {
+                    showQuizQuestionDialog(item, quizQuestion, onAnswered)
+                } else {
+                    // フォールバック問題
+                    val fallbackQuestion = com.chatait.panictutorgpt.data.GeminiService.QuizQuestion(
+                        question = "${item.subject}について重要なポイントを1つ説明してください。",
+                        correctAnswer = "基本的な概念や原理について正確に説明すること"
+                    )
+                    showQuizQuestionDialog(item, fallbackQuestion, onAnswered)
+                }
+            } catch (e: Exception) {
+                loadingDialog.dismiss()
+                Toast.makeText(requireContext(), "問題生成に失敗しました", Toast.LENGTH_SHORT).show()
+                onAnswered("", true) // エラーの場合は正解として扱う
+            }
+        }
+    }
+
+    /**
+     * 問題ダイアログを表示
+     */
+    private fun showQuizQuestionDialog(
+        item: ChecklistItem,
+        question: com.chatait.panictutorgpt.data.GeminiService.QuizQuestion,
+        onAnswered: (userAnswer: String, isCorrect: Boolean) -> Unit
+    ) {
+        val dialogView = LayoutInflater.from(requireContext()).inflate(R.layout.dialog_quiz_question, null)
+        val questionText = dialogView.findViewById<android.widget.TextView>(R.id.textQuestion)
+        val answerEdit = dialogView.findViewById<android.widget.EditText>(R.id.editAnswer)
+
+        questionText.text = "【${item.subject}】\n${question.question}"
+
+        val dialog = AlertDialog.Builder(requireContext())
+            .setTitle("確認テスト")
+            .setView(dialogView)
+            .setCancelable(false)
+            .setPositiveButton("解答") { _, _ ->
+                val userAnswer = answerEdit.text.toString().trim()
+                val isCorrect = checkAnswer(userAnswer, question.correctAnswer)
+
+                // 結果を表示
+                showQuizResultDialog(item, question, userAnswer, isCorrect) {
+                    onAnswered(userAnswer, isCorrect)
+                }
+            }
+            .setNegativeButton("スキップ") { _, _ ->
+                onAnswered("", true) // スキップは正解として扱う
+            }
+            .create()
+
+        dialog.show()
+    }
+
+    /**
+     * 解答結果ダイアログを表示
+     */
+    private fun showQuizResultDialog(
+        item: ChecklistItem,
+        question: com.chatait.panictutorgpt.data.GeminiService.QuizQuestion,
+        userAnswer: String,
+        isCorrect: Boolean,
+        onDismiss: () -> Unit
+    ) {
+        val resultMessage = if (isCorrect) {
+            "🎉 正解です！\n\nあなたの解答: $userAnswer"
+        } else {
+            "❌ 残念...不正解です\n\nあなたの解答: $userAnswer\n正解: ${question.correctAnswer}"
+        }
+
+        AlertDialog.Builder(requireContext())
+            .setTitle("${item.subject} - 結果")
+            .setMessage(resultMessage)
+            .setPositiveButton("次へ") { _, _ ->
+                onDismiss()
+            }
+            .setCancelable(false)
+            .show()
+    }
+
+    /**
+     * 解答の正誤判定（簡易版）
+     */
+    private fun checkAnswer(userAnswer: String, correctAnswer: String): Boolean {
+        if (userAnswer.isEmpty()) return false
+
+        // 簡易的な判定（実際のプロダクトではより高度な判定が必要）
+        val userWords = userAnswer.lowercase().split(Regex("[\\s、。,.]")).filter { it.isNotEmpty() }
+        val correctWords = correctAnswer.lowercase().split(Regex("[\\s、。,.]")).filter { it.isNotEmpty() }
+
+        // 正解の単語の30%以上が含まれていれば正解とする
+        val matchCount = correctWords.count { correctWord ->
+            userWords.any { userWord ->
+                userWord.contains(correctWord) || correctWord.contains(userWord)
+            }
+        }
+
+        return matchCount >= (correctWords.size * 0.3).coerceAtLeast(1.0)
+    }
+
+    /**
+     * 罵倒通知を送信
+     */
+    private fun sendInsultNotifications(wrongAnswers: List<Pair<ChecklistItem, String>>) {
+        android.util.Log.d("HomeFragment", "sendInsultNotifications called with ${wrongAnswers.size} wrong answers")
+
+        lifecycleScope.launch {
+            try {
+                val geminiService = GeminiService(requireContext())
+
+                wrongAnswers.forEach { (item, wrongAnswer) ->
+                    android.util.Log.d("HomeFragment", "Processing wrong answer for subject: ${item.subject}")
+
+                    val correctAnswer = "正解例" // 実際には問題から取得
+                    val insultMessages = geminiService.generateInsultMessages(item.subject, wrongAnswer, correctAnswer)
+
+                    android.util.Log.d("HomeFragment", "Generated ${insultMessages.size} insult messages")
+
+                    // 10個の罵倒通知を連続で送信（間隔なし）
+                    insultMessages.forEachIndexed { index, message ->
+                        android.util.Log.d("HomeFragment", "Sending insult notification ${index + 1}: $message")
+
+                        val mainActivity = activity as? MainActivity
+                        if (mainActivity != null) {
+                            mainActivity.showNotification(
+                                "💀 ${item.subject} - 不正解通知 ${index + 1}/10",
+                                message
+                            )
+                            android.util.Log.d("HomeFragment", "Notification sent successfully")
+                        } else {
+                            android.util.Log.e("HomeFragment", "MainActivity is null, cannot send notification")
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("HomeFragment", "罵倒通知送信エラー: ${e.message}", e)
+            }
+        }
     }
 
     override fun onDestroyView() {
