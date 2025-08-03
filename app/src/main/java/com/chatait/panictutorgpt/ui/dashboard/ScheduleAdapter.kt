@@ -4,6 +4,9 @@ import android.animation.ValueAnimator
 import android.graphics.Color
 import android.os.Handler
 import android.os.Looper
+import android.text.SpannableStringBuilder
+import android.text.Spanned
+import android.text.style.ForegroundColorSpan
 import android.view.LayoutInflater
 import android.view.MotionEvent
 import android.view.View
@@ -13,6 +16,7 @@ import androidx.appcompat.app.AlertDialog
 import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.RecyclerView
 import com.chatait.panictutorgpt.R
+import com.chatait.panictutorgpt.data.StudyRepository
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -20,7 +24,8 @@ class ScheduleAdapter(
     private val items: MutableList<ScheduleItem>,
     private val onDeleteClick: ((String) -> Unit)? = null,
     private val onItemClick: ((ScheduleItem) -> Unit)? = null,
-    private val onEmptyScheduleDelete: ((String) -> Unit)? = null
+    private val onEmptyScheduleDelete: ((String) -> Unit)? = null,
+    private val studyRepository: StudyRepository? = null
 ) : RecyclerView.Adapter<ScheduleAdapter.ViewHolder>() {
 
     private val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
@@ -42,14 +47,47 @@ class ScheduleAdapter(
         val item = items[position]
         holder.dateText.text = item.date
 
-        // 空でない科目のみ表示
+        // 空でない科目のみ表示（チェックマーク付き＋色付き）
         val nonEmptySubjects = item.subjects.withIndex()
             .filter { it.value.isNotBlank() }
 
-        holder.subjectsText.text = if (nonEmptySubjects.isEmpty()) {
-            "テスト予定なし"
+        if (nonEmptySubjects.isEmpty()) {
+            holder.subjectsText.text = "テスト予定なし"
         } else {
-            nonEmptySubjects.joinToString("\n") { (i, s) -> "${i+1}限: $s" }
+            val spannableBuilder = SpannableStringBuilder()
+
+            nonEmptySubjects.forEachIndexed { index, (i, subject) ->
+                val period = i + 1
+                val isStudied = studyRepository?.isSubjectStudiedToday(item.date, subject, period) == true
+
+                val text = if (isStudied) {
+                    "✓ ${period}限: $subject"
+                } else {
+                    "${period}限: $subject"
+                }
+
+                val startIndex = spannableBuilder.length
+                spannableBuilder.append(text)
+                val endIndex = spannableBuilder.length
+
+                // 勉強完了した科目は緑色に
+                if (isStudied) {
+                    val greenColor = Color.parseColor("#4CAF50") // マテリアルデザインの緑色
+                    spannableBuilder.setSpan(
+                        ForegroundColorSpan(greenColor),
+                        startIndex,
+                        endIndex,
+                        Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
+                    )
+                }
+
+                // 最後の項目以外は改行を追加
+                if (index < nonEmptySubjects.size - 1) {
+                    spannableBuilder.append("\n")
+                }
+            }
+
+            holder.subjectsText.text = spannableBuilder
         }
 
         // タッチリスナー設定（長押し処理と通常クリック処理を統合）

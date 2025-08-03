@@ -78,8 +78,25 @@ class ThreatNotificationService : Service() {
         val upcomingTests = getTestsWithinOneWeek()
 
         if (upcomingTests.isNotEmpty()) {
-            Log.d("ThreatService", "1週間以内のテストが発見されました: $upcomingTests")
-            sendThreatNotification(upcomingTests)
+            // 勉強記録をチェックして、すべて勉強済みの日は除外
+            val studyRepository = com.chatait.panictutorgpt.data.StudyRepository(this)
+            val scheduleRepository = com.chatait.panictutorgpt.data.ScheduleRepository(this)
+
+            val testsNeedingStudy = upcomingTests.filter { (date, subjects) ->
+                // その日のスケジュールアイテムを取得
+                val scheduleItem = scheduleRepository.loadSchedules().find { it.date == date }
+                scheduleItem?.let { schedule ->
+                    // すべての科目が勉強済みでない場合のみ通知対象
+                    !studyRepository.areAllSubjectsStudiedForDate(schedule)
+                } ?: true // スケジュールが見つからない場合は通知対象
+            }
+
+            if (testsNeedingStudy.isNotEmpty()) {
+                Log.d("ThreatService", "勉強が必要なテスト: $testsNeedingStudy")
+                sendThreatNotification(testsNeedingStudy)
+            } else {
+                Log.d("ThreatService", "すべてのテストの勉強が完了しています")
+            }
         } else {
             Log.d("ThreatService", "1週間以内のテストはありません")
         }

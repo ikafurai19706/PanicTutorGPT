@@ -65,6 +65,11 @@ class HomeFragment : Fragment() {
             showStudyChecklistDialog()
         }
 
+        // 勉強履歴表示ボタン
+        binding.studyHistoryButton.setOnClickListener {
+            showStudyHistoryDialog()
+        }
+
         // 長押しでAPIキー設定ダイアログを表示
         binding.registerButton.setOnLongClickListener {
             (activity as? MainActivity)?.showApiKeySettingDialog()
@@ -267,17 +272,60 @@ class HomeFragment : Fragment() {
         buttonSave.setOnClickListener {
             val checkedItems = checklistAdapter.getCheckedItems()
             if (checkedItems.isNotEmpty()) {
+                // 勉強記録を保存
+                val studyRepository = com.chatait.panictutorgpt.data.StudyRepository(requireContext())
+                checkedItems.forEach { item ->
+                    val studyRecord = com.chatait.panictutorgpt.data.StudyRecord(
+                        date = item.date,
+                        subject = item.subject,
+                        period = item.period
+                    )
+                    studyRepository.saveStudyRecord(studyRecord)
+                }
+
                 val studiedSubjects = checkedItems.joinToString("、") { "${it.date} ${it.period}限: ${it.subject}" }
                 Toast.makeText(
                     requireContext(),
                     "お疲れさまでした！\n勉強した科目: $studiedSubjects",
                     Toast.LENGTH_LONG
                 ).show()
-                // TODO: 実際の勉強記録保存機能を実装予定
                 dialog.dismiss()
             } else {
                 Toast.makeText(requireContext(), "勉強した科目を選択してください", Toast.LENGTH_SHORT).show()
             }
+        }
+
+        dialog.show()
+    }
+
+    private fun showStudyHistoryDialog() {
+        val studyRepository = com.chatait.panictutorgpt.data.StudyRepository(requireContext())
+        val studyRecords = studyRepository.getAllStudyRecords()
+
+        if (studyRecords.isEmpty()) {
+            Toast.makeText(requireContext(), "勉強履歴がありません", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        // 勉強履歴を表示するダイアログを作成
+        val dialogView = LayoutInflater.from(requireContext()).inflate(R.layout.dialog_study_history, null)
+        val recyclerView = dialogView.findViewById<androidx.recyclerview.widget.RecyclerView>(R.id.recyclerViewStudyHistory)
+        val buttonClose = dialogView.findViewById<android.widget.Button>(R.id.buttonCloseHistory)
+
+        // 勉強履歴アダプターをセット
+        val historyAdapter = StudyHistoryAdapter(studyRecords)
+        recyclerView.adapter = historyAdapter
+        recyclerView.layoutManager = androidx.recyclerview.widget.LinearLayoutManager(requireContext())
+
+        val dialog = AlertDialog.Builder(requireContext())
+            .setTitle("📖 勉強履歴")
+            .setView(dialogView)
+            .setCancelable(false)
+            .create()
+
+        // 閉じるボタン
+        buttonClose.setOnClickListener {
+            dialog.dismiss()
         }
 
         dialog.show()

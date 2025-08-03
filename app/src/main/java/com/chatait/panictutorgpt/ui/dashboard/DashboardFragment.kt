@@ -43,6 +43,9 @@ class DashboardFragment : Fragment() {
         // ScheduleRepositoryを初期化
         scheduleRepository = ScheduleRepository(requireContext())
 
+        // StudyRepositoryを初期化
+        val studyRepository = com.chatait.panictutorgpt.data.StudyRepository(requireContext())
+
         // 保存されたスケジュールを読み込み
         scheduleList = scheduleRepository.loadSchedules()
 
@@ -69,7 +72,8 @@ class DashboardFragment : Fragment() {
                     scheduleRepository.deleteSchedule(itemToDelete.date)
                     adapter.removeItem(itemId)
                 }
-            }
+            },
+            studyRepository = studyRepository // StudyRepositoryを渡す
         )
         recyclerView.layoutManager = LinearLayoutManager(requireContext())
         recyclerView.adapter = adapter

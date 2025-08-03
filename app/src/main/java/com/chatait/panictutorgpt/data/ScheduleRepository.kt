@@ -83,4 +83,17 @@ class ScheduleRepository(context: Context) {
     private fun getScheduleDates(): Set<String> {
         return prefs.getStringSet(KEY_SCHEDULE_DATES, emptySet()) ?: emptySet()
     }
+
+    fun clearAllSchedules() {
+        prefs.edit {
+            // すべてのスケジュール関連データを削除
+            val existingDates = getScheduleDates()
+            existingDates.forEach { date ->
+                for (i in 0..5) { // 0限〜5限（6時限分）
+                    remove("${KEY_SCHEDULE_PREFIX}${date}_subject_$i")
+                }
+            }
+            remove(KEY_SCHEDULE_DATES)
+        }
+    }
 }

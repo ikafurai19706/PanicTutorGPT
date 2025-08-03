@@ -6,6 +6,8 @@ import android.content.pm.PackageManager
 import android.os.*
 import android.util.Log
 import android.view.LayoutInflater
+import android.view.Menu
+import android.view.MenuItem
 import android.widget.EditText
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
@@ -257,5 +259,53 @@ class MainActivity : AppCompatActivity() {
             "時間は容赦なく過ぎています...${subjects.joinToString("、")}の準備はまだ終わっていませんね？"
         )
         return threatMessages.random()
+    }
+
+    override fun onCreateOptionsMenu(menu: Menu): Boolean {
+        menuInflater.inflate(R.menu.main_menu, menu)
+        return true
+    }
+
+    override fun onOptionsItemSelected(item: MenuItem): Boolean {
+        return when (item.itemId) {
+            R.id.menu_reset_all_data -> {
+                showResetAllDataDialog()
+                true
+            }
+            else -> super.onOptionsItemSelected(item)
+        }
+    }
+
+    private fun showResetAllDataDialog() {
+        AlertDialog.Builder(this)
+            .setTitle("全履歴リセット")
+            .setMessage("スケジュールと勉強記録をすべて削除しますか？\n（APIキーは保持されます）")
+            .setIcon(android.R.drawable.ic_dialog_alert)
+            .setPositiveButton("削除") { _, _ ->
+                resetAllData()
+            }
+            .setNegativeButton("キャンセル") { dialog, _ ->
+                dialog.dismiss()
+            }
+            .show()
+    }
+
+    private fun resetAllData() {
+        try {
+            // スケジュールデータを削除
+            val scheduleRepository = com.chatait.panictutorgpt.data.ScheduleRepository(this)
+            scheduleRepository.clearAllSchedules()
+
+            // 勉強記録を削除
+            val studyRepository = com.chatait.panictutorgpt.data.StudyRepository(this)
+            studyRepository.clearAllStudyRecords()
+
+            Toast.makeText(this, "全履歴を削除しました", Toast.LENGTH_SHORT).show()
+            Log.d("MainActivity", "全履歴削除が完了しました")
+
+        } catch (e: Exception) {
+            Log.e("MainActivity", "履歴削除中にエラーが発生しました: ${e.message}", e)
+            Toast.makeText(this, "削除中にエラーが発生しました", Toast.LENGTH_SHORT).show()
+        }
     }
 }
