@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.SharedPreferences
 import androidx.core.content.edit
 import com.chatait.panictutorgpt.ui.dashboard.ScheduleItem
+import com.chatait.panictutorgpt.ui.dashboard.Grade
 
 class ScheduleRepository(context: Context) {
 
@@ -21,6 +22,7 @@ class ScheduleRepository(context: Context) {
             existingDates.forEach { date ->
                 for (i in 0..5) { // 0限〜5限（6時限分）
                     remove("${KEY_SCHEDULE_PREFIX}${date}_subject_$i")
+                    remove("${KEY_SCHEDULE_PREFIX}${date}_grade_$i")
                 }
             }
 
@@ -32,6 +34,9 @@ class ScheduleRepository(context: Context) {
                 schedule.subjects.forEachIndexed { index, subject ->
                     putString("${KEY_SCHEDULE_PREFIX}${schedule.date}_subject_$index", subject)
                 }
+                schedule.grades.forEachIndexed { index, grade ->
+                    putString("${KEY_SCHEDULE_PREFIX}${schedule.date}_grade_$index", grade.name)
+                }
             }
         }
     }
@@ -42,14 +47,24 @@ class ScheduleRepository(context: Context) {
 
         dates.forEach { date ->
             val subjects = mutableListOf<String>()
+            val grades = mutableListOf<Grade>()
             for (i in 0..5) { // 0限〜5限（6時限分）
                 val subject = prefs.getString("${KEY_SCHEDULE_PREFIX}${date}_subject_$i", "") ?: ""
                 subjects.add(subject)
+
+                // 成績情報を読み込み
+                val gradeString = prefs.getString("${KEY_SCHEDULE_PREFIX}${date}_grade_$i", "NONE") ?: "NONE"
+                val grade = try {
+                    Grade.valueOf(gradeString)
+                } catch (e: IllegalArgumentException) {
+                    Grade.NONE
+                }
+                grades.add(grade)
             }
 
             // 空でない科目が1つでもあればスケジュールに追加
             if (subjects.any { it.isNotEmpty() }) {
-                schedules.add(ScheduleItem(date, subjects))
+                schedules.add(ScheduleItem(date, subjects, grades))
             }
         }
 
@@ -60,6 +75,7 @@ class ScheduleRepository(context: Context) {
         prefs.edit {
             for (i in 0..5) { // 0限〜5限（6時限分）
                 remove("${KEY_SCHEDULE_PREFIX}${date}_subject_$i")
+                remove("${KEY_SCHEDULE_PREFIX}${date}_grade_$i")
             }
 
             val dates = getScheduleDates().toMutableSet()
@@ -72,6 +88,9 @@ class ScheduleRepository(context: Context) {
         prefs.edit {
             scheduleItem.subjects.forEachIndexed { index, subject ->
                 putString("${KEY_SCHEDULE_PREFIX}${scheduleItem.date}_subject_$index", subject)
+            }
+            scheduleItem.grades.forEachIndexed { index, grade ->
+                putString("${KEY_SCHEDULE_PREFIX}${scheduleItem.date}_grade_$index", grade.name)
             }
 
             val dates = getScheduleDates().toMutableSet()
@@ -91,6 +110,7 @@ class ScheduleRepository(context: Context) {
             existingDates.forEach { date ->
                 for (i in 0..5) { // 0限〜5限（6時限分）
                     remove("${KEY_SCHEDULE_PREFIX}${date}_subject_$i")
+                    remove("${KEY_SCHEDULE_PREFIX}${date}_grade_$i")
                 }
             }
             remove(KEY_SCHEDULE_DATES)

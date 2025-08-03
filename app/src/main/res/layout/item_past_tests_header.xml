@@ -7,8 +7,7 @@
     card_view:cardElevation="2dp"
     card_view:cardCornerRadius="8dp"
     card_view:cardUseCompatPadding="true"
-    android:layout_margin="8dp"
-    card_view:cardBackgroundColor="#F0F0F0">
+    android:layout_margin="8dp">
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -31,16 +30,14 @@
             android:layout_weight="1"
             android:text="過去のテスト"
             android:textSize="16sp"
-            android:textStyle="bold"
-            android:textColor="#666666" />
+            android:textStyle="bold" />
 
         <TextView
             android:id="@+id/pastTestCount"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="0件"
-            android:textSize="14sp"
-            android:textColor="#999999" />
+            android:textSize="14sp" />
 
     </LinearLayout>
 </androidx.cardview.widget.CardView>

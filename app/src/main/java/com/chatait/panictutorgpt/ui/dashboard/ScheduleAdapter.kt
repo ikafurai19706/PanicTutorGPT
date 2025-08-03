@@ -49,7 +49,7 @@ class ScheduleAdapter(
 
         val (pastTests, currentAndFutureTests) = items.partition { isPastDate(it.date) }
 
-        // 現在・未来のテストを追加
+        // 現在・未来のテストを先に追加
         currentAndFutureTests.sortedBy { it.date }.forEach { schedule ->
             displayItems.add(DisplayItem.Schedule(schedule))
         }
@@ -72,22 +72,7 @@ class ScheduleAdapter(
         }
     }
 
-    private fun isPastDate(dateString: String): Boolean {
-        return try {
-            val testDate = displayDateFormat.parse(dateString)
-            val today = Calendar.getInstance().apply {
-                set(Calendar.HOUR_OF_DAY, 0)
-                set(Calendar.MINUTE, 0)
-                set(Calendar.SECOND, 0)
-                set(Calendar.MILLISECOND, 0)
-            }.time
-            testDate != null && testDate.before(today)
-        } catch (e: Exception) {
-            false
-        }
-    }
-
-    class ScheduleViewHolder(view: View) : RecyclerView.ViewHolder(view) {
+    class ViewHolder(view: View) : RecyclerView.ViewHolder(view) {
         val dateText: TextView = view.findViewById(R.id.scheduleDate)
         val subjectsText: TextView = view.findViewById(R.id.scheduleSubjects)
         val cardView: View = view
@@ -111,7 +96,7 @@ class ScheduleAdapter(
         return when (viewType) {
             TYPE_SCHEDULE -> {
                 val view = LayoutInflater.from(parent.context).inflate(R.layout.item_schedule, parent, false)
-                ScheduleViewHolder(view)
+                ViewHolder(view)
             }
             TYPE_PAST_TESTS_HEADER -> {
                 val view = LayoutInflater.from(parent.context).inflate(R.layout.item_past_tests_header, parent, false)
@@ -125,9 +110,9 @@ class ScheduleAdapter(
         val item = displayItems[position]
 
         when (holder) {
-            is ScheduleViewHolder -> {
+            is ViewHolder -> {
                 if (item is DisplayItem.Schedule) {
-                    bindScheduleItem(holder, item.schedule)
+                    bindScheduleItem(holder, item.scheduleItem)
                 }
             }
             is PastTestsHeaderViewHolder -> {
@@ -138,7 +123,7 @@ class ScheduleAdapter(
         }
     }
 
-    private fun bindScheduleItem(holder: ScheduleViewHolder, item: ScheduleItem) {
+    private fun bindScheduleItem(holder: ViewHolder, item: ScheduleItem) {
         holder.dateText.text = item.date
 
         // 空でない科目のみ表示（チェックマーク付き＋色付き）
@@ -184,21 +169,26 @@ class ScheduleAdapter(
             holder.subjectsText.text = spannableBuilder
         }
 
-        // タッチリスナー設定（過去のテストは編集不可）
-        if (isPastDate(item.date)) {
-            // 過去のテストはタッチ操作を無効化
-            holder.cardView.setOnTouchListener(null)
-            holder.cardView.isClickable = false
-            holder.cardView.isLongClickable = false
+        // タッチリスナー設定
+        holder.cardView.alpha = 1.0f
+        holder.cardView.isClickable = true
+        holder.cardView.isLongClickable = true
 
+        if (isPastDate(item.date)) {
+            // 過去のテストは通常のタップのみ有効（長押しは無効）
+            holder.cardView.setOnTouchListener { _, event ->
+                when (event.action) {
+                    MotionEvent.ACTION_UP -> {
+                        onItemClick?.invoke(item)
+                        true
+                    }
+                    else -> false
+                }
+            }
             // 過去のテストであることを視覚的に示す（少し暗くする）
-            holder.cardView.alpha = 0.7f
+            holder.cardView.alpha = 0.8f
         } else {
             // 現在または未来のテストは通常通りタッチ操作を有効化
-            holder.cardView.alpha = 1.0f
-            holder.cardView.isClickable = true
-            holder.cardView.isLongClickable = true
-
             holder.cardView.setOnTouchListener { view, event ->
                 when (event.action) {
                     MotionEvent.ACTION_DOWN -> {
@@ -228,7 +218,7 @@ class ScheduleAdapter(
 
     private fun bindPastTestsHeader(holder: PastTestsHeaderViewHolder, item: DisplayItem.PastTestsHeader) {
         holder.headerTitle.text = "過去のテスト"
-        holder.pastTestCount.text = "${item.pastTests.size} 件の過去テスト"
+        holder.pastTestCount.text = "${item.pastTests.size}件"
 
         // ヘッダーのタッチリスナー設定
         holder.cardView.setOnClickListener {
@@ -237,20 +227,27 @@ class ScheduleAdapter(
             notifyDataSetChanged()
         }
 
-        // 展開状態に応じて背景色を変更
-        val backgroundColor = if (isPastTestsExpanded) {
-            ContextCompat.getColor(holder.itemView.context, R.color.colorAccentLight)
-        } else {
-            Color.TRANSPARENT
-        }
-        holder.cardView.setBackgroundColor(backgroundColor)
-
         // 矢印アイコンの回転
         val rotationDegree = if (isPastTestsExpanded) 180f else 0f
         holder.expandIcon.rotation = rotationDegree
     }
 
     override fun getItemCount(): Int = displayItems.size
+
+    private fun isPastDate(dateString: String): Boolean {
+        return try {
+            val testDate = displayDateFormat.parse(dateString)
+            val today = Calendar.getInstance().apply {
+                set(Calendar.HOUR_OF_DAY, 0)
+                set(Calendar.MINUTE, 0)
+                set(Calendar.SECOND, 0)
+                set(Calendar.MILLISECOND, 0)
+            }.time
+            testDate != null && testDate.before(today)
+        } catch (e: Exception) {
+            false
+        }
+    }
 
     private fun startLongPressAnimation(view: View) {
         // CardViewの元の背景を保存
@@ -357,7 +354,6 @@ class ScheduleAdapter(
         val position = items.indexOfFirst { it.id == itemId }
         if (position != -1) {
             items.removeAt(position)
-            updateDisplayItems()
             notifyItemRemoved(position)
         }
     }
@@ -366,13 +362,20 @@ class ScheduleAdapter(
         val position = items.indexOfFirst { it.id == updatedItem.id }
         if (position != -1) {
             items[position] = updatedItem
-            updateDisplayItems()
             notifyItemChanged(position)
         }
     }
 
+    fun refreshData() {
+        updateDisplayItems()
+        notifyDataSetChanged()
+    }
+
     sealed class DisplayItem {
-        data class Schedule(val schedule: ScheduleItem) : DisplayItem()
-        data class PastTestsHeader(val pastTests: List<ScheduleItem>, val isExpanded: Boolean) : DisplayItem()
+        data class Schedule(val scheduleItem: ScheduleItem) : DisplayItem()
+        data class PastTestsHeader(
+            val pastTests: List<ScheduleItem>,
+            val isExpanded: Boolean
+        ) : DisplayItem()
     }
 }

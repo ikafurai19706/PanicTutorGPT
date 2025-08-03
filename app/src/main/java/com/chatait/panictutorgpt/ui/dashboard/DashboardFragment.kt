@@ -62,8 +62,18 @@ class DashboardFragment : Fragment() {
                 }
             },
             onItemClick = { item ->
-                // アイテムクリック時の編集処理
-                showEditScheduleForm(item)
+                // 過去のテストかどうかを判定
+                val testDate = java.text.SimpleDateFormat("yyyy/MM/dd", java.util.Locale.getDefault()).parse(item.date)
+                val today = java.util.Calendar.getInstance().time
+                val isPastTest = testDate != null && testDate.before(today)
+
+                if (isPastTest) {
+                    // 過去のテストの場合は成績入力ダイアログを表示
+                    showScheduleDetailsDialog(item)
+                } else {
+                    // 未来のテストの場合は編集フォームを表示
+                    showEditScheduleForm(item)
+                }
             },
             onEmptyScheduleDelete = { itemId ->
                 // 空スケジュール削除処理
@@ -180,7 +190,7 @@ class DashboardFragment : Fragment() {
                                     // UIを更新
                                     scheduleList.clear()
                                     scheduleList.addAll(scheduleRepository.loadSchedules())
-                                    adapter.refreshData(scheduleList)
+                                    adapter.refreshData()
                                     dialog.dismiss()
                                 }
                                 .setNegativeButton("キャンセル", null)
@@ -193,13 +203,13 @@ class DashboardFragment : Fragment() {
                 } else {
                     errorText.visibility = View.GONE
                     // ScheduleRepositoryを使用してデータを保存
-                    val scheduleItem = ScheduleItem(date, subjects)
+                    val scheduleItem = ScheduleItem(date, subjects, List(6) { Grade.NONE })
                     scheduleRepository.addOrUpdateSchedule(scheduleItem)
 
                     // UIを更新
                     scheduleList.clear()
                     scheduleList.addAll(scheduleRepository.loadSchedules())
-                    adapter.refreshData(scheduleList)
+                    adapter.refreshData()
                     dialog.dismiss()
                 }
             }
@@ -263,13 +273,109 @@ class DashboardFragment : Fragment() {
             "📅 ${schedule.date}\n\n$subjects"
         }
 
-        AlertDialog.Builder(requireContext())
+        // 過去のテストかどうかを判定
+        val testDate = java.text.SimpleDateFormat("yyyy/MM/dd", java.util.Locale.getDefault()).parse(schedule.date)
+        val today = java.util.Calendar.getInstance().time
+        val isPastTest = testDate != null && testDate.before(today)
+
+        val dialog = AlertDialog.Builder(requireContext())
             .setTitle("テスト予定")
             .setMessage(message)
-            .setPositiveButton("編集") { _, _ ->
+
+        if (isPastTest) {
+            // 過去のテストの場合は成績入力ボタンのみ表示
+            dialog.setPositiveButton("成績入力") { _, _ ->
+                showGradeInputDialog(schedule)
+            }
+        } else {
+            // 未来のテストの場合は編集ボタンのみ
+            dialog.setPositiveButton("編集") { _, _ ->
                 showEditScheduleForm(schedule)
             }
-            .setNegativeButton("閉じる", null)
+        }
+
+        dialog.setNegativeButton("閉じる", null)
+            .show()
+    }
+
+    // 成績入力ダイアログを表示
+    private fun showGradeInputDialog(schedule: ScheduleItem) {
+        val context = requireContext()
+        val inflater = LayoutInflater.from(context)
+        val dialogView = inflater.inflate(R.layout.dialog_grade_input, null)
+
+        // 各時限の成績入力ビューを取得
+        val gradeSpinners = listOf(
+            dialogView.findViewById<android.widget.Spinner>(R.id.gradeSpinner1),
+            dialogView.findViewById<android.widget.Spinner>(R.id.gradeSpinner2),
+            dialogView.findViewById<android.widget.Spinner>(R.id.gradeSpinner3),
+            dialogView.findViewById<android.widget.Spinner>(R.id.gradeSpinner4),
+            dialogView.findViewById<android.widget.Spinner>(R.id.gradeSpinner5),
+            dialogView.findViewById<android.widget.Spinner>(R.id.gradeSpinner6)
+        )
+
+        val subjectLabels = listOf(
+            dialogView.findViewById<TextView>(R.id.subjectLabel1),
+            dialogView.findViewById<TextView>(R.id.subjectLabel2),
+            dialogView.findViewById<TextView>(R.id.subjectLabel3),
+            dialogView.findViewById<TextView>(R.id.subjectLabel4),
+            dialogView.findViewById<TextView>(R.id.subjectLabel5),
+            dialogView.findViewById<TextView>(R.id.subjectLabel6)
+        )
+
+        // 成績選択肢の配列
+        val gradeOptions = Grade.values().map { "${it.displayName} (${it.description})" }.toTypedArray()
+
+        // 各時限のスピナーを設定
+        schedule.subjects.forEachIndexed { index, subject ->
+            if (subject.isNotBlank() && index < gradeSpinners.size) {
+                // 科目名を表示
+                subjectLabels[index].text = "${index + 1}限: $subject"
+                subjectLabels[index].visibility = View.VISIBLE
+
+                // スピナーを設定
+                val adapter = android.widget.ArrayAdapter(context, android.R.layout.simple_spinner_item, gradeOptions)
+                adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+                gradeSpinners[index].adapter = adapter
+                gradeSpinners[index].visibility = View.VISIBLE
+
+                // 現在の成績を選択状態にする
+                val currentGrade = if (index < schedule.grades.size) schedule.grades[index] else Grade.NONE
+                val currentGradeIndex = Grade.values().indexOf(currentGrade)
+                gradeSpinners[index].setSelection(currentGradeIndex)
+            } else {
+                // 科目がない場合は非表示
+                subjectLabels[index].visibility = View.GONE
+                gradeSpinners[index].visibility = View.GONE
+            }
+        }
+
+        // ダイアログを表示
+        AlertDialog.Builder(context)
+            .setTitle("成績入力 - ${schedule.date}")
+            .setView(dialogView)
+            .setPositiveButton("保存") { _, _ ->
+                // 成績を保存
+                val newGrades = schedule.grades.toMutableList()
+                schedule.subjects.forEachIndexed { index, subject ->
+                    if (subject.isNotBlank() && index < gradeSpinners.size) {
+                        val selectedGradeIndex = gradeSpinners[index].selectedItemPosition
+                        newGrades[index] = Grade.values()[selectedGradeIndex]
+                    }
+                }
+
+                // 更新されたスケジュールを保存
+                val updatedSchedule = schedule.copy(grades = newGrades)
+                scheduleRepository.addOrUpdateSchedule(updatedSchedule)
+
+                // UIを更新
+                scheduleList.clear()
+                scheduleList.addAll(scheduleRepository.loadSchedules())
+                adapter.refreshData()
+
+                android.widget.Toast.makeText(context, "成績を保存しました", android.widget.Toast.LENGTH_SHORT).show()
+            }
+            .setNegativeButton("キャンセル", null)
             .show()
     }
 
