@@ -61,8 +61,8 @@ class HomeFragment : Fragment() {
         handler.post(updateTimeRunnable)
 
         binding.registerButton.setOnClickListener {
-            (activity as? MainActivity)?.sendTestReminder()
-            Toast.makeText(context, "リマインダー通知を送信しました！", Toast.LENGTH_SHORT).show()
+            // テスト一覧をチェックリスト形式で表示
+            showStudyChecklistDialog()
         }
 
         // 長押しでAPIキー設定ダイアログを表示
@@ -188,6 +188,95 @@ class HomeFragment : Fragment() {
                 dialog.dismiss()
             } else {
                 Toast.makeText(requireContext(), "APIキーを入力してください", Toast.LENGTH_SHORT).show()
+            }
+        }
+
+        dialog.show()
+    }
+
+    /**
+     * 勉強完了時にチェックリスト形式でダイアログを表示する
+     */
+    private fun showStudyChecklistDialog() {
+        val schedules = scheduleRepository.loadSchedules()
+
+        if (schedules.isEmpty()) {
+            Toast.makeText(requireContext(), "テスト予定が登録されていません", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        // 日付ごとにグループ化してチェックリスト項目を作成
+        val checklistItems = mutableListOf<ChecklistItem>()
+
+        schedules.sortedBy { it.date }.forEach { scheduleItem ->
+            var hasSubjects = false
+
+            // 各科目をチェック
+            scheduleItem.subjects.forEachIndexed { index, subject ->
+                if (subject.isNotBlank()) {
+                    if (!hasSubjects) {
+                        // 最初の科目の前に日付ヘッダーを追加
+                        checklistItems.add(ChecklistItem(
+                            date = scheduleItem.date,
+                            subject = "",
+                            period = 0,
+                            isDateHeader = true
+                        ))
+                        hasSubjects = true
+                    }
+
+                    // 科目のチェックボックスを追加
+                    checklistItems.add(ChecklistItem(
+                        date = scheduleItem.date,
+                        subject = subject,
+                        period = index + 1,
+                        isChecked = false
+                    ))
+                }
+            }
+        }
+
+        if (checklistItems.isEmpty()) {
+            Toast.makeText(requireContext(), "勉強できる科目が見つかりません", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        // ダイアログを表示
+        val dialogView = LayoutInflater.from(requireContext()).inflate(R.layout.dialog_study_checklist, null)
+        val recyclerView = dialogView.findViewById<androidx.recyclerview.widget.RecyclerView>(R.id.recyclerViewChecklist)
+        val buttonClose = dialogView.findViewById<android.widget.Button>(R.id.buttonCloseChecklist)
+        val buttonSave = dialogView.findViewById<android.widget.Button>(R.id.buttonSaveProgress)
+
+        // チェックリストアダプターをセット
+        val checklistAdapter = ChecklistAdapter(checklistItems)
+        recyclerView.adapter = checklistAdapter
+        recyclerView.layoutManager = androidx.recyclerview.widget.LinearLayoutManager(requireContext())
+
+        val dialog = AlertDialog.Builder(requireContext())
+            .setTitle("📚 勉強した科目を選択")
+            .setView(dialogView)
+            .setCancelable(false)
+            .create()
+
+        // 完了ボタン
+        buttonClose.setOnClickListener {
+            dialog.dismiss()
+        }
+
+        // 保存ボタン
+        buttonSave.setOnClickListener {
+            val checkedItems = checklistAdapter.getCheckedItems()
+            if (checkedItems.isNotEmpty()) {
+                val studiedSubjects = checkedItems.joinToString("、") { "${it.date} ${it.period}限: ${it.subject}" }
+                Toast.makeText(
+                    requireContext(),
+                    "お疲れさまでした！\n勉強した科目: $studiedSubjects",
+                    Toast.LENGTH_LONG
+                ).show()
+                // TODO: 実際の勉強記録保存機能を実装予定
+                dialog.dismiss()
+            } else {
+                Toast.makeText(requireContext(), "勉強した科目を選択してください", Toast.LENGTH_SHORT).show()
             }
         }
 

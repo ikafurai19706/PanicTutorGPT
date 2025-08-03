@@ -40,6 +40,6 @@
         android:layout_height="wrap_content"
         android:layout_marginTop="16dp"
         android:padding="16dp"
-        android:text="📢 リマインダー通知を送信"
+        android:text="📚 勉強した！"
         android:textSize="20sp" />
 </LinearLayout>
