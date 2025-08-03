@@ -42,7 +42,7 @@ class HomeFragment : Fragment() {
         override fun run() {
             updateDateTime()
             updateCountdownView()
-            handler.postDelayed(this, 100)
+            handler.postDelayed(this, 10)
         }
     }
 
